@@ -2,6 +2,10 @@ from django.db import models
 from django.conf import settings
 from typing import Optional, Union
 from user_service.middlewares.request import get_client_id_from_request
+from datetime import datetime as _time
+
+
+ALLOWED_ROLES = ["admin"]
 
 
 class UserModel(models.Model):
@@ -57,16 +61,14 @@ class UserModel(models.Model):
     @staticmethod
     def get_by_username(username: str, client_ts: Optional[str] = None) -> dict:
         client = get_client_id_from_request() if not client_ts else client_ts
-        user = UserModel.objects.filter(
-            username == username, client_ts == client
-        ).first()
+        user = UserModel.objects.filter(username=username, client_ts=client).first()
         return user.to_dict()
 
     @staticmethod
     def get_by_id(user_id: Union[int, str], client_ts: Optional[str] = None) -> dict:
         client = get_client_id_from_request() if not client_ts else client_ts
         user = UserModel.objects.filter(id=user_id, client_ts=client).first()
-        return user.to_dict() if user else None
+        return user.to_dict() if user else {}
 
     @staticmethod
     def get_user_id_by_username(
@@ -74,7 +76,7 @@ class UserModel(models.Model):
     ) -> Optional[int]:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(username=username, client_ts=client).first()
-        return db_user.id if db_user else None
+        return db_user.id if db_user else False
 
     @staticmethod
     def get_user_name_by_id(
@@ -82,7 +84,7 @@ class UserModel(models.Model):
     ) -> Optional[str]:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(id=user_id, client_ts=client).first()
-        return db_user.username if db_user else None
+        return db_user.username if db_user else False
 
     @staticmethod
     def block_user(username: str) -> bool:
@@ -106,9 +108,11 @@ class UserModel(models.Model):
         return False
 
     @staticmethod
-    def get_all_users() -> Optional[list]:
+    def get_all_users() -> list:
         users = UserModel.objects.all()
-        return users
+        if users:
+            return [user.to_dict() for user in users]
+        return []
 
 
 class UserTokenModel(models.Model):
@@ -119,38 +123,114 @@ class UserTokenModel(models.Model):
     class Meta:
         db_table = "user_tokens"
 
-    def __init__(
-        self,
-        user_id: Union[int, str, None] = None,
-        created_at: Optional[str] = None,
-        token: Optional[str] = None,
-    ) -> None:
-        self.user_id = user_id
-        self.token = token
-        self.created_at = created_at
-
     def __str__(self) -> str:
         return f"<UserToken {self.token}>"
 
-    def get_user_token_record(self) -> Optional[object]:
-        user_token_record = UserTokenModel.objects.filter(user == self.user_id).first()
+    @staticmethod
+    def get_user_token_record(user_id: int):
+        user = UserModel.objects.get(id=user_id)
+        if not user:
+            return None
+        user_token_record = UserTokenModel.objects.filter(user=user).first()
         return user_token_record
 
-    def get_user_token(self) -> Optional[str]:
-        user_token_record = UserTokenModel.objects.filter(user == self.user_id).first()
+    @staticmethod
+    def get_user_token(user_id: int) -> str:
+        user = UserModel.objects.get(id=user_id)
+        if not user:
+            return ""
+        user_token_record = UserTokenModel.objects.filter(user=user).first()
         if user_token_record:
             return user_token_record.token
-        return None
-
-    def register_token(self) -> bool:
-        user_token_record = UserTokenModel.objects.filter(id == self.id).first()
-        if not user_token_record:
-            self.save()
-        return True
+        return ""
 
     def update_token(self, new_token: str) -> bool:
-        user_token_record = UserTokenModel.objects.filter(id == self.id).first()
+        user_token_record = UserTokenModel.objects.filter(id=self.id).first()
         if user_token_record:
             user_token_record.token = new_token
             user_token_record.save()
         return True
+
+
+class RoleModel(models.Model):
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE)
+    created_at = models.DateTimeField()
+    target_object_id = models.CharField()
+    target_object_type = models.CharField()
+    role = models.CharField()
+    client_ts = models.CharField()
+    role_holder_email = models.CharField(blank=True, null=True)
+
+    class Meta:
+        db_table = "roles"
+
+    def get_system_admin_emails(self) -> list:
+        admins = RoleModel.objects.filter(
+            client_ts=self.client_ts, target_object_type="system"
+        )
+        emails = []
+        for admin in admins:
+            emails.append(admin.role_holder_email)
+        return emails
+
+    def is_system_admin(self) -> bool:
+        admin = RoleModel.query.filter(
+            client_ts=self.client_ts, target_object_type="system", user=self.user
+        ).first()
+        if admin:
+            return True
+        return False
+
+    def role_is_valid(self) -> bool:
+        return self.role in ALLOWED_ROLES
+
+    def __str__(self) -> str:
+        return f"<Role {self.user_id}>"
+
+
+class SearchSettingModel(models.Model):
+    title = models.CharField()
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE)
+    description = models.CharField(blank=True, null=True)
+    setting = models.JSONField()
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "search_settings"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "user_id": self.user.id,
+            "setting": self.setting,
+            "description": self.description,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    def update(self, id: Union[int, str]) -> Union[dict, bool]:
+        # check if the search setting title is unique for the user
+        record = SearchSettingModel.objects.filter(
+            user=self.user, title=self.title
+        ).first()
+        if record and record.id != id:
+            return "Title already exists"
+
+        record = SearchSettingModel.query.filter(id=id, user=self.user).first()
+        if record:
+            record.title = self.title
+            record.setting = self.setting
+            record.description = self.description
+            record.updated_at = _time.now()
+            record.save()
+            return record.to_dict()
+
+        return False
+
+    def can_visit_edit(self, user_id: Union[int, str]) -> bool:
+        return self.user.id == user_id
+
+    def __str__(self) -> str:
+        return f"<SearchSettingModel {self.id}>"
