@@ -137,8 +137,6 @@ class UserTokenModel(models.Model):
     @staticmethod
     def get_user_token(user_id: int) -> str:
         user = UserModel.objects.get(id=user_id)
-        if not user:
-            return ""
         user_token_record = UserTokenModel.objects.filter(user=user).first()
         if user_token_record:
             return user_token_record.token
@@ -163,6 +161,17 @@ class RoleModel(models.Model):
 
     class Meta:
         db_table = "roles"
+
+    
+    def get_by_user_and_target(self, user_id:Union[int, str]):
+        user = UserModel.objects.filter(id=user_id)
+        role = RoleModel.objects.filter(
+            user=user, 
+            target_object_id=self.target_object_id, 
+            target_object_type=self.target_object_type, 
+            client_ts=self.client_ts
+        )
+        return role
 
     def get_system_admin_emails(self) -> list:
         admins = RoleModel.objects.filter(

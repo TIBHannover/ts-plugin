@@ -1,4 +1,5 @@
 from django.http import HttpResponse, HTTPException
+from django.core.exceptions import PermissionDenied, BadRequest
 
 
 def error_handler_decorator(func):
@@ -15,6 +16,14 @@ def error_handler_decorator(func):
                 status=400,
                 content_type="text/plain",
             )
+            return response
+
+        except PermissionDenied as e:
+            response = HttpResponse(str(e), status=401)
+            return response
+
+        except BadRequest as e:
+            response = HttpResponse(str(e), status=400)
             return response
 
         except HTTPException as e:

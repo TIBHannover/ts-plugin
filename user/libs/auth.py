@@ -1,18 +1,19 @@
 # encoding: utf-8
 
-from user_service.libs.github import GithubLib
-from user_service.libs.gitlab import GitLabLib
-from user_service.libs.orcid import OrcidLib
-from user_service.libs.aai import AaiLib
+from user.libs.github import GithubLib
+from user.libs.gitlab import GitLabLib
+from user.libs.orcid import OrcidLib
+from user.libs.aai import AaiLib
+
 from user_service.libs.utils import Utils
-from flask import abort, current_app
-from user_service.models.user_token import UserTokenModel
-from user_service.models.user import UserModel
-from user_service.models.role import RoleModel
+
+from user.models import UserTokenModel, RoleModel, UserModel
 import secrets
 from datetime import datetime as _time
 from typing import Optional, Union
 from user_service.interfaces.i_editable_model_obj import IEditableModelObj
+from django.core.exceptions import PermissionDenied, BadRequest
+from django.conf import settings
 
 
 class Auth:
@@ -39,17 +40,13 @@ class Auth:
 
     def authenticate(self) -> Union[dict, bool]:
         if self.auth_provider == "github":
-            return GithubLib.authenticate(
-                code=self.code, app=current_app, client_ts_id=self.client_ts_id
-            )
+            return GithubLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "orcid":
-            return OrcidLib.authenticate(code=self.code, app=current_app)
+            return OrcidLib.authenticate(code=self.code)
         elif self.auth_provider == "native":
-            return AaiLib.authenticate(code=self.code, app=current_app)
+            return AaiLib.authenticate(code=self.code)
         elif self.auth_provider == "gitlab":
-            return GitLabLib.authenticate(
-                code=self.code, app=current_app, client_ts_id=self.client_ts_id
-            )
+            return GitLabLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         return False
 
     def abort_if_not_authenticated(self) -> None:
@@ -62,16 +59,14 @@ class Auth:
         if self.auth_provider == "github":
             login_validity = GithubLib.login_valid(user_auth_token=self.access_token)
         elif self.auth_provider == "orcid":
-            login_validity = OrcidLib.login_valid(
-                user_auth_token=self.access_token, orcid_id=self.orcid_id
-            )
+            login_validity = OrcidLib.login_valid(user_auth_token=self.access_token, orcid_id=self.orcid_id)
         elif self.auth_provider == "native":
             login_validity = AaiLib.is_login_valid(user_auth_token=self.access_token)
         elif self.auth_provider == "gitlab":
             login_validity = GitLabLib.login_valid(user_auth_token=self.access_token)
 
         if not login_validity:
-            abort(401, "Not Authorized")
+            raise PermissionDenied("Not Authorized")
 
     def user_is_guest(self) -> Optional[bool]:
         try:
@@ -80,127 +75,105 @@ class Auth:
             self.abort_if_user_does_not_exist()
             self.abort_if_user_token_is_not_valid()
             if self.auth_provider == "github":
-                login_validity = GithubLib.login_valid(
-                    user_auth_token=self.access_token
-                )
+                login_validity = GithubLib.login_valid(user_auth_token=self.access_token)
             elif self.auth_provider == "orcid":
-                login_validity = OrcidLib.login_valid(
-                    user_auth_token=self.access_token, orcid_id=self.orcid_id
-                )
+                login_validity = OrcidLib.login_valid(user_auth_token=self.access_token, orcid_id=self.orcid_id)
             elif self.auth_provider == "native":
-                login_validity = AaiLib.is_login_valid(
-                    user_auth_token=self.access_token
-                )
+                login_validity = AaiLib.is_login_valid(user_auth_token=self.access_token)
             elif self.auth_provider == "gitlab":
-                login_validity = GitLabLib.login_valid(
-                    user_auth_token=self.access_token
-                )
+                login_validity = GitLabLib.login_valid(user_auth_token=self.access_token)
 
             if not login_validity:
-                abort(401, "Not Authorized")
+                raise PermissionDenied("Not Authorized")
 
             return False
         except:
-            # raise
             return True
 
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
-        if not self.client_ts_id or self.client_ts_id not in current_app.config.get(
-            "CLIENT_TERMINOLOGY_SERVICES", []
-        ):
-            abort(401, "Client application is not allowed to use this service.")
+        if not self.client_ts_id or self.client_ts_id not in getattr(settings, "CLIENT_TERMINOLOGY_SERVICES", []):
+            raise PermissionDenied("Client application is not allowed to use this service.")
 
-        if not self.client_ts_token or self.client_ts_token != current_app.config.get(
-            "FRONTEDN_AUTH_TOKEN"
-        ):
-            abort(401, "Client application is not allowed to use this service.")
+        if not self.client_ts_token or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN):
+            raise PermissionDenied("Client application is not allowed to use this service.")
 
         return True
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
-        if not self.auth_provider or self.auth_provider not in current_app.config.get(
-            "AUTH_PROVIDERS", []
-        ):
-            abort(403, "auth provider is not clear")
+        if not self.auth_provider or self.auth_provider not in getattr(settings, "AUTH_PROVIDERS", []):
+            raise PermissionDenied("auth provider is not clear")
         return True
 
     def abort_if_user_does_not_exist(self) -> Optional[bool]:
         if not self.user_id:
-            abort(401, "Not Authorized user")
+            raise PermissionDenied("Not Authorized user")
         return True
 
     def abort_if_user_is_blocked(self) -> None:
         if not self.user_id:
-            abort(403, "incomplete request")
+            raise BadRequest("incomplete request")
         user = UserModel.get_by_id(self.user_id)
         if user["is_blocked"]:
-            abort(401, "Not Authorized user")
+            raise PermissionDenied("Not Authorized user")
 
     def get_or_register_user_token_if_not_exist(self) -> str:
-        user_token_object = UserTokenModel(user_id=self.user_id)
-        user_token = user_token_object.get_user_token()
+        user_token = UserTokenModel.get_user_token_record(user_id=self.user_id)
         if self.user_id and user_token:
             return user_token
 
-        new_token = secrets.token_urlsafe(32)
-        created_at = _time.now()
-        user_token_object.created_at = created_at
-        user_token_object.token = new_token
-        user_token_object.register_token()
-        return new_token
+        token = secrets.token_urlsafe(32)
+        new_token = UserTokenModel()
+        new_token.created_at = _time.now()
+        new_token.token = token 
+        new_token.save()
+        return token
 
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
         if not self.user_token:
-            abort(401, "Not Authorized user token")
+            raise PermissionError("Not Authorized user token")
 
-        user_token_model = UserTokenModel(user_id=self.user_id)
-        user_token_in_db = user_token_model.get_user_token()
+        user_token_in_db = UserTokenModel.get_user_token(user_id=self.user_id)
         if not user_token_in_db or user_token_in_db != self.user_token:
-            abort(401, "Not Authorized user token")
+            raise PermissionError("Not Authorized user token")
 
         return True
 
-    def is_user_admin_for_entity(
-        self, ontologyId: str, collectionId: Optional[str] = None
-    ) -> bool:
+    def is_user_admin_for_entity(self, ontologyId: str, collectionId: Optional[str] = None) -> bool:
         role = RoleModel(
-            user_id=self.user_id,
             target_object_id="system",
             target_object_type="system",
             client=self.client_ts_id,
         )
-        if role.get_by_user_and_target():
+        if role.get_by_user_and_target(user_id=self.user_id):
             return True
 
         if collectionId:
             role = RoleModel(
-                user_id=self.user_id,
                 target_object_id=collectionId,
                 target_object_type="collection",
                 client=self.client_ts_id,
             )
-            if role.get_by_user_and_target():
+            if role.get_by_user_and_target(user_id=self.user_id):
                 return True
 
         if ontologyId:
             role = RoleModel(
-                user_id=self.user_id,
                 target_object_id=ontologyId,
                 target_object_type="ontology",
                 client=self.client_ts_id,
             )
-            if role.get_by_user_and_target():
+            if role.get_by_user_and_target(user_id=self.user_id):
                 return True
 
-            collections = Utils.fetch_ontology_collections(ontologyId)
+            # collections = Utils.fetch_ontology_collections(ontologyId)
+            # todo: ?????????????????????
             for col in collections:
                 role = RoleModel(
-                    user_id=self.user_id,
                     target_object_id=col,
                     target_object_type="collection",
                     client=self.client_ts_id,
                 )
-                if role.get_by_user_and_target():
+                if role.get_by_user_and_target(self.user_id):
                     return True
 
         return False
