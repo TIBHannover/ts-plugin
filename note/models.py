@@ -56,34 +56,25 @@ class NoteModel(models.Model):
         else:
             return
 
+
     @staticmethod
     def get_notes_by_conditions(conditions: dict) -> dict:
         base_condition_set = _Q(active=True) & _Q(client_ts=conditions["client_ts"])
 
         if conditions.get("semantic_component_type"):
-            base_condition_set &= _Q(
-                semantic_component_type=conditions["semantic_component_type"]
-            )
+            base_condition_set &= _Q(semantic_component_type=conditions["semantic_component_type"])
 
-        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(
-            pinned=conditions["pinned"]
-        )
+        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(pinned=conditions["pinned"])
         parent_ontology_condition_set = _Q(parent_ontology_id=conditions["ontology_id"])
 
         if conditions.get("semantic_component_iri"):
-            base_condition_set &= _Q(
-                semantic_component_iri=conditions["semantic_component_iri"]
-            )
+            base_condition_set &= _Q(semantic_component_iri=conditions["semantic_component_iri"])
             ontology_condition_set = _Q(ontology_id=conditions["ontology_id"])
 
         if conditions.get("get_notes_from_children"):
-            ontology_condition_set = (
-                _Q(parent_ontology_condition_set) | ontology_condition_set
-            )
+            ontology_condition_set = _Q(parent_ontology_condition_set) | ontology_condition_set
 
-        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(
-            creator_id=conditions["user_id"]
-        )
+        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(creator_id=conditions["user_id"])
 
         count_of_all_notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
@@ -96,19 +87,11 @@ class NoteModel(models.Model):
             start = conditions.get("offset", 0)
             end = conditions.get("limit", 10) + start
             notes = NoteModel.objects.filter(
-                _Q(
-                    base_condition_set
-                    & visibility_condition_set
-                    & ontology_condition_set
-                )
+                _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
             ).order_by("created_at")[start : end + 1]
         else:
             notes = NoteModel.objects.filter(
-                _Q(
-                    base_condition_set
-                    & visibility_condition_set
-                    & ontology_condition_set
-                )
+                _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
             ).order_by("created_at")
 
         if not notes:
@@ -116,12 +99,11 @@ class NoteModel(models.Model):
         result = []
         for note in notes:
             note_dict = note.to_dict()
-            note_dict["imported"] = (
-                False if conditions["ontology_id"] == note_dict["ontology_id"] else True
-            )
+            note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
             result.append(note_dict)
 
         return {"notes": result, "count_of_all_notes": count_of_all_notes}
+
 
     @staticmethod
     def user_can_edit(note_id: Union[int, str], user_id: Union[int, str]) -> bool:
@@ -134,6 +116,7 @@ class NoteModel(models.Model):
             return False
         return True
 
+
     @staticmethod
     def get_visibility(note_id: Union[int, str]) -> bool:
         note = NoteModel.objects.filter(id=note_id, active=True).first()
@@ -141,8 +124,10 @@ class NoteModel(models.Model):
             return note.visibility
         return False
 
+
     def __str__(self) -> str:
         return f"<NoteModel {self.title}>"
+
 
 
 class NoteCommentModel(models.Model):
@@ -173,6 +158,7 @@ class NoteCommentModel(models.Model):
         self.save()
         return self
 
+
     @staticmethod
     def user_can_edit(comment_id: Union[int, str], user_id: Union[int, str]) -> bool:
         comment = NoteCommentModel.objects.filter(id=comment_id).first()
@@ -185,6 +171,7 @@ class NoteCommentModel(models.Model):
 
         return True
 
+
     @staticmethod
     def get_visibility(comment_id: Union[int, str]) -> bool:
         comment = NoteCommentModel.objects.filter(id=comment_id, active=True).first()
@@ -192,5 +179,6 @@ class NoteCommentModel(models.Model):
             return comment.note.visibility
         return False
 
+    
     def __str__(self) -> str:
         return f"<NoteCommentModel {self.id}>"

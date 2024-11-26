@@ -5,7 +5,7 @@ from user.libs.gitlab import GitLabLib
 from user.libs.orcid import OrcidLib
 from user.libs.aai import AaiLib
 
-from user_service.libs.utils import Utils
+from user_service.libs.utils import fetch_ontology_collections
 
 from user.models import UserTokenModel, RoleModel, UserModel
 import secrets
@@ -38,6 +38,7 @@ class Auth:
         self.user_id = user_id
         self.user_token = user_token
 
+
     def authenticate(self) -> Union[dict, bool]:
         if self.auth_provider == "github":
             return GithubLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
@@ -48,6 +49,7 @@ class Auth:
         elif self.auth_provider == "gitlab":
             return GitLabLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         return False
+
 
     def abort_if_not_authenticated(self) -> None:
         login_validity = False
@@ -67,6 +69,7 @@ class Auth:
 
         if not login_validity:
             raise PermissionDenied("Not Authorized")
+
 
     def user_is_guest(self) -> Optional[bool]:
         try:
@@ -90,24 +93,28 @@ class Auth:
         except:
             return True
 
+
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
         if not self.client_ts_id or self.client_ts_id not in getattr(settings, "CLIENT_TERMINOLOGY_SERVICES", []):
             raise PermissionDenied("Client application is not allowed to use this service.")
 
-        if not self.client_ts_token or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN):
+        if not self.client_ts_token or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN:
             raise PermissionDenied("Client application is not allowed to use this service.")
 
         return True
+
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
         if not self.auth_provider or self.auth_provider not in getattr(settings, "AUTH_PROVIDERS", []):
             raise PermissionDenied("auth provider is not clear")
         return True
 
+
     def abort_if_user_does_not_exist(self) -> Optional[bool]:
         if not self.user_id:
             raise PermissionDenied("Not Authorized user")
         return True
+
 
     def abort_if_user_is_blocked(self) -> None:
         if not self.user_id:
@@ -116,8 +123,9 @@ class Auth:
         if user["is_blocked"]:
             raise PermissionDenied("Not Authorized user")
 
+
     def get_or_register_user_token_if_not_exist(self) -> str:
-        user_token = UserTokenModel.get_user_token_record(user_id=self.user_id)
+        user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
         if self.user_id and user_token:
             return user_token
 
@@ -128,61 +136,69 @@ class Auth:
         new_token.save()
         return token
 
+
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
         if not self.user_token:
             raise PermissionError("Not Authorized user token")
 
-        user_token_in_db = UserTokenModel.get_user_token(user_id=self.user_id)
-        if not user_token_in_db or user_token_in_db != self.user_token:
+        user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
+        if not user_token or user_token.token != self.user_token:
             raise PermissionError("Not Authorized user token")
 
         return True
 
     def is_user_admin_for_entity(self, ontologyId: str, collectionId: Optional[str] = None) -> bool:
-        role = RoleModel(
+        system_admin = RoleModel.objects.filter(
+            user__id=self.user_id,
             target_object_id="system",
             target_object_type="system",
-            client=self.client_ts_id,
-        )
-        if role.get_by_user_and_target(user_id=self.user_id):
+            client_ts=self.client_ts_id,
+        ).first()
+        if system_admin:
+            # system admins are admin for all entities.
             return True
 
         if collectionId:
-            role = RoleModel(
+            # if the request is to check the collection admin status for a user.
+            collectio_admin = RoleModel.objects.filter(
+                user__id=self.user_id,
                 target_object_id=collectionId,
                 target_object_type="collection",
-                client=self.client_ts_id,
-            )
-            if role.get_by_user_and_target(user_id=self.user_id):
+                client_ts=self.client_ts_id,
+            ).first()
+            if collectio_admin:
                 return True
 
         if ontologyId:
-            role = RoleModel(
+            ontology_admin = RoleModel.objects.filter(
+                user__id=self.user_id,
                 target_object_id=ontologyId,
                 target_object_type="ontology",
-                client=self.client_ts_id,
+                client_ts=self.client_ts_id,
             )
-            if role.get_by_user_and_target(user_id=self.user_id):
+            if ontology_admin:
                 return True
 
-            # collections = Utils.fetch_ontology_collections(ontologyId)
-            # todo: ?????????????????????
+            # if the user is not ontology admin directly, check if the user is the collection admin that contains that ontology.
+            collections = fetch_ontology_collections(ontologyId)
             for col in collections:
-                role = RoleModel(
+                collectio_admin = RoleModel.objects.filter(
+                    user__id=self.user_id,
                     target_object_id=col,
                     target_object_type="collection",
                     client=self.client_ts_id,
-                )
-                if role.get_by_user_and_target(self.user_id):
+                ).first()
+                if collectio_admin:
                     return True
 
         return False
+
 
     def user_can_edit_object(
         self,
         objectModel: IEditableModelObj,
         object_id: Union[int, str],
-        role_target_object_id: str = "",
+        role_target_object_id: str = ""
     ) -> bool:
         if not self.user_id:
             return False
@@ -190,10 +206,7 @@ class Auth:
             return True
 
         visibility = objectModel.get_visibility(object_id)
-        if (
-            self.is_user_admin_for_entity(ontologyId=role_target_object_id)
-            and visibility != "me"
-        ):
+        if self.is_user_admin_for_entity(ontologyId=role_target_object_id) and visibility != "me":
             return True
 
         return False

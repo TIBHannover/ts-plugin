@@ -126,22 +126,7 @@ class UserTokenModel(models.Model):
     def __str__(self) -> str:
         return f"<UserToken {self.token}>"
 
-    @staticmethod
-    def get_user_token_record(user_id: int):
-        user = UserModel.objects.get(id=user_id)
-        if not user:
-            return None
-        user_token_record = UserTokenModel.objects.filter(user=user).first()
-        return user_token_record
-
-    @staticmethod
-    def get_user_token(user_id: int) -> str:
-        user = UserModel.objects.get(id=user_id)
-        user_token_record = UserTokenModel.objects.filter(user=user).first()
-        if user_token_record:
-            return user_token_record.token
-        return ""
-
+    
     def update_token(self, new_token: str) -> bool:
         user_token_record = UserTokenModel.objects.filter(id=self.id).first()
         if user_token_record:
