@@ -4,9 +4,7 @@ from user.libs.github import GithubLib
 from user.libs.gitlab import GitLabLib
 from user.libs.orcid import OrcidLib
 from user.libs.aai import AaiLib
-
 from user_service.libs.utils import fetch_ontology_collections
-
 from user.models import UserTokenModel, RoleModel, UserModel
 import secrets
 from datetime import datetime as _time

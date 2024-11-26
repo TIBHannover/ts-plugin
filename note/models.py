@@ -179,6 +179,6 @@ class NoteCommentModel(models.Model):
             return comment.note.visibility
         return False
 
-    
+
     def __str__(self) -> str:
         return f"<NoteCommentModel {self.id}>"

@@ -1,5 +1,22 @@
 from django.http import HttpResponse, HTTPException
 from django.core.exceptions import PermissionDenied, BadRequest
+from user_service.middlewares.request import get_headers_dict, get_request_method
+from user.models import UserModel
+from user.libs.auth import Auth
+
+
+def authentication_required(func):
+    def wrapper(*args, **kwargs):
+        auth_object_dict = get_headers_dict()
+        if get_request_method() != "OPTIONS":
+            user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+            auth_object_dict["user_id"] = user_id
+            auth_controller = Auth(**auth_object_dict)
+            auth_controller.abort_if_not_authenticated()
+        return func(*args, **kwargs)
+
+    wrapper.__name__ = func.__name__
+    return wrapper
 
 
 def error_handler_decorator(func):

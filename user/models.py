@@ -71,9 +71,7 @@ class UserModel(models.Model):
         return user.to_dict() if user else {}
 
     @staticmethod
-    def get_user_id_by_username(
-        username: str, client_ts: Optional[str] = None
-    ) -> Optional[int]:
+    def get_user_id_by_username(username: str, client_ts: Optional[str] = None) -> Optional[int]:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(username=username, client_ts=client).first()
         return db_user.id if db_user else False
@@ -97,7 +95,9 @@ class UserModel(models.Model):
 
     @staticmethod
     def save_user_extra(
-        username: str, user_extra: dict, client_ts: Optional[str] = None
+        username: str, 
+        user_extra: dict, 
+        client_ts: Optional[str] = None
     ) -> bool:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(username=username, client_ts=client).first()
@@ -113,6 +113,8 @@ class UserModel(models.Model):
         if users:
             return [user.to_dict() for user in users]
         return []
+
+
 
 
 class UserTokenModel(models.Model):
@@ -147,16 +149,6 @@ class RoleModel(models.Model):
     class Meta:
         db_table = "roles"
 
-    
-    def get_by_user_and_target(self, user_id:Union[int, str]):
-        user = UserModel.objects.filter(id=user_id)
-        role = RoleModel.objects.filter(
-            user=user, 
-            target_object_id=self.target_object_id, 
-            target_object_type=self.target_object_type, 
-            client_ts=self.client_ts
-        )
-        return role
 
     def get_system_admin_emails(self) -> list:
         admins = RoleModel.objects.filter(
@@ -184,7 +176,7 @@ class RoleModel(models.Model):
 
 class SearchSettingModel(models.Model):
     title = models.CharField()
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE)
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="search_settings")
     description = models.CharField(blank=True, null=True)
     setting = models.JSONField()
     created_at = models.DateTimeField()
