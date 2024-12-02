@@ -3,7 +3,6 @@ from github.models import GithubIssueRequestModel
 from user.models import UserModel
 import requests
 from datetime import datetime as _time
-from user.libs.auth import Auth
 from user_service.libs.decorators import (
     error_handler_decorator, 
     authentication_required, 
@@ -19,6 +18,8 @@ from user_service.libs.utils import create_json_response
 from django.conf import settings
 import json
 from django.http import HttpResponseBadRequest, HttpResponseServerError
+
+
 
 
 @require_http_methods["GET"]
