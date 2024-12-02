@@ -55,6 +55,16 @@ class NoteModel(models.Model):
             super().save(**kwargs)
         else:
             return
+    
+
+    def update_record(self, updates:dict) -> Union[bool, object]:
+        if not self:
+            return False
+        for column, new_value in updates.items():
+            setattr(self, column, new_value)
+        
+        self.save()
+        return self
 
 
     @staticmethod
@@ -98,8 +108,10 @@ class NoteModel(models.Model):
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
         result = []
         for note in notes:
+            comment_count = note.note_comments.count()
             note_dict = note.to_dict()
             note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
+            note["comments_count"] = comment_count
             result.append(note_dict)
 
         return {"notes": result, "count_of_all_notes": count_of_all_notes}
@@ -117,6 +129,17 @@ class NoteModel(models.Model):
         return True
 
 
+    def can_visit(self, user_id:Union[int, str], client_ts:str, is_guest: bool):
+        visibilities = ['public'] if is_guest else ['public', 'internal']
+        if self.client_ts != client_ts:
+            return False
+
+        if self.note.visibility not in visibilities and self.creator.id != user_id:
+            return False
+
+        return True
+
+
     @staticmethod
     def get_visibility(note_id: Union[int, str]) -> bool:
         note = NoteModel.objects.filter(id=note_id, active=True).first()
@@ -131,11 +154,11 @@ class NoteModel(models.Model):
 
 
 class NoteCommentModel(models.Model):
-    creator = models.ForeignKey(UserModel, models.DO_NOTHING)
-    created_at = models.DateTimeField()
+    creator = models.ForeignKey(UserModel, models.DO_NOTHING, related_name="user_comments")
+    created_at = models.DateTimeField()  
     updated_at = models.DateTimeField(blank=True, null=True)
     content = models.CharField()
-    note = models.ForeignKey(NoteModel, models.DO_NOTHING)
+    note = models.ForeignKey(NoteModel, models.DO_NOTHING, related_name="note_comments")
     active = models.BooleanField(default=True)
 
     class Meta:

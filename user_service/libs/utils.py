@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django.conf import settings
 import requests
 from user_service.middlewares.request import get_client_id_from_request
+from typing import Any, Optional
 
 
 def create_json_response(response_dict):
@@ -29,3 +30,17 @@ def get_frontend_base_url() -> str:
         return settings.NFDI4CHEM_FRONTEND_ADDRESS
     
     return settings.NFDI4ING_FRONTEND_ADDRESS
+
+
+
+def add_to_dict_if_value_is_not_none(target_dict:dict, key:str, value:Any):
+    if value:
+        target_dict[key] = value
+
+
+def get_int_from_string(string:str) -> Optional[int]:
+    try:
+        number = int(string)
+        return number
+    except:
+        return None

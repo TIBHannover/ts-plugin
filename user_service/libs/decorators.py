@@ -19,6 +19,19 @@ def authentication_required(func):
     return wrapper
 
 
+def client_id_validation(func):
+    def wrapper(*args, **kwargs):
+        auth_object_dict = get_headers_dict()
+        if get_request_method() != "OPTIONS":
+            auth_controller = Auth(**auth_object_dict)
+            auth_controller.abort_if_client_app_not_valid()
+        return func(*args, **kwargs)
+
+    wrapper.__name__ = func.__name__
+    return wrapper
+
+
+
 def error_handler_decorator(func):
     def wrapp_this_function(*args, **kwargs):
         try:
