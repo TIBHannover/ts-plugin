@@ -9,5 +9,6 @@ urlpatterns = [
     path("note/", include("note.urls")),
     path("github/", include("github.urls")),
     path("contact/", include("contact.urls")),
+    path("collection/", include("collection.urls")),
 ]
 
