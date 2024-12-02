@@ -84,7 +84,7 @@ def resolve_report(request):
     username = get_username_from_request()
     client_ts = get_client_id_from_request()
     role_model = RoleModel.objects.filter(user__username=username, client_ts=client_ts).first()
-    if not role_model or not role_model.is_system_admin():
+    if not role_model or not role_model.target_object_type != 'system':
         raise PermissionDenied("Not Authorized")
     
     _form = json.loads(request.body)
@@ -131,7 +131,7 @@ def report_list(request):
     username = get_username_from_request()
     client_ts = get_client_id_from_request()
     role_model = RoleModel.objects.filter(user__username=username, client_ts=client_ts).first()
-    if not role_model or not role_model.is_system_admin():
+    if not role_model or not role_model.target_object_type != 'system':
         raise PermissionDenied("Not Authorized")
     
     reports = ReportModel.get_pending_reports_for_client(client_id=client_ts)

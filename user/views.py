@@ -45,7 +45,7 @@ def login():
         user_token = auth.get_or_register_user_token_if_not_exist()
         auth_response_dict["ts_user_token"] = user_token
         role_model = RoleModel(user=user, client=auth_object_dict["client_ts_id"])
-        auth_response_dict["system_admin"] = role_model.is_system_admin()
+        auth_response_dict["system_admin"] = role_model.target_object_type == 'system'
         auth_response_dict["settings"] = user.user_extra
         return create_json_response(auth_response_dict)
     return create_json_response({"issue": "auth is rejected"})

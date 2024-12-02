@@ -159,14 +159,7 @@ class RoleModel(models.Model):
             emails.append(admin.role_holder_email)
         return emails
 
-    def is_system_admin(self) -> bool:
-        admin = RoleModel.query.filter(
-            client_ts=self.client_ts, target_object_type="system", user=self.user
-        ).first()
-        if admin:
-            return True
-        return False
-
+    
     def role_is_valid(self) -> bool:
         return self.role in ALLOWED_ROLES
 
