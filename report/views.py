@@ -21,7 +21,7 @@ DEFAULT_NOTE_LIST_PAGE = 1
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def create_report(request):
     _form = json.loads(request.body)
     object_type = _form['objectType']
@@ -72,7 +72,7 @@ def create_report(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def resolve_report(request):
     ''''
         Resolve action types: 
@@ -126,7 +126,7 @@ def resolve_report(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def report_list(request):
     username = get_username_from_request()
     client_ts = get_client_id_from_request()

@@ -8,13 +8,13 @@ from django.http import HttpResponseBadRequest, HttpResponseServerError
 from django.conf import settings
 
 
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
 
 @error_handler_decorator
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def create(request):
     data = request.json()
     issueTypes = {"1": "Question", "2": "Problem"}

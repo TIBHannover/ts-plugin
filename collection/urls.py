@@ -7,6 +7,6 @@ urlpatterns = [
     path('create/', views.create, name="create"),
     path('get/<int:collection_id>/', views.get, name="get"),
     path('get_list/', views.get_list, name="get_list"),
-    path('update/<string:collection_id>/', views.update, name="update"),
-    path('delete/<string:collection_id>/', views.delete, name="delete"),
+    path('update/<int:collection_id>/', views.update, name="update"),
+    path('delete/<int:collection_id>/', views.delete, name="delete"),
 ]

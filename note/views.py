@@ -24,14 +24,14 @@ DEFAULT_NOTE_LIST_SIZE = 10
 DEFAULT_NOTE_LIST_PAGE = 1
 
 
-require_http_methods['GET']
+require_http_methods(['GET'])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def create(request):
     payload = request.json()
     frontend_id = get_client_id_from_request()
@@ -71,7 +71,7 @@ def create(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['PUT']
+@require_http_methods(['PUT'])
 def update(request):
     payload = request.json()
     frontend_id = get_client_id_from_request()
@@ -120,7 +120,7 @@ def update(request):
 
 @error_handler_decorator
 @client_id_validation
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def list(request):
     args = request.GET
     ontology_id = args.get("ontology")
@@ -196,7 +196,7 @@ def list(request):
 
 @error_handler_decorator
 @client_id_validation
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def get(request, note_id):
     args = request.GET
     with_comments = args.get("withComments")
@@ -263,7 +263,7 @@ def get(request, note_id):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def create_comment(request):
     payload = request.json()
     auth_object_dict = get_headers_dict()
@@ -295,7 +295,7 @@ def create_comment(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['PUT']
+@require_http_methods(['PUT'])
 def update_comment(request):
     payload = request.json()
     frontend_id = get_client_id_from_request()
@@ -327,7 +327,7 @@ def update_comment(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['DELETE']
+@require_http_methods(['DELETE'])
 def delete(request):
     payload = request.json()
     frontend_id = get_client_id_from_request()
@@ -359,7 +359,7 @@ def delete(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['PUT']
+@require_http_methods(['PUT'])
 def update_pin(request):
     payload = request.json()
     auth_object_dict = get_headers_dict()

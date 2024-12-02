@@ -14,14 +14,14 @@ from django.http import HttpResponseServerError
 
 
 
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["POST"]
+@require_http_methods(["POST"])
 def create(request):
     data = json.loads(request.body)
     email = data["email"]
@@ -130,7 +130,7 @@ def create(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def testshape(request):
     data = request.GET
     ontoPurl = data["purl"]
@@ -142,7 +142,7 @@ def testshape(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def suggestion_exist(request):
     data = request.GET
     purl = data["purl"]

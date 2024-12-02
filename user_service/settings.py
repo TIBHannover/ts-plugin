@@ -34,13 +34,13 @@ INSTALLED_APPS = [
     "github",
     "contact",
     "collection",
-    "admin",
+    "admin.apps.AdminConfig",
     "admin_cli"
 
 ]
 
 MIDDLEWARE = [
-    "user_service.middlewares.request.RequestMiddleware"
+    "user_service.middlewares.request.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

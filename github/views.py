@@ -22,7 +22,7 @@ from django.http import HttpResponseBadRequest, HttpResponseServerError
 
 
 
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
@@ -30,7 +30,7 @@ def ping(request):
 
 @error_handler_decorator
 @client_id_validation
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def get_issues_for_ontology(request):
     args = request.GET
     issue_path = args.get('path')
@@ -63,7 +63,7 @@ def get_issues_for_ontology(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def submit_github_issue(request):
     request_header = get_headers_dict()
     if request_header.get('auth_provider') != 'github':
@@ -115,7 +115,7 @@ def submit_github_issue(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['GET']
+@require_http_methods(['GET'])
 def get_submited_issues(request):
     request_header = get_headers_dict()
     if request_header.get('auth_provider') != 'github':
@@ -133,7 +133,7 @@ def get_submited_issues(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def get_issue_templates_for_repo(request):    
     request_header = get_headers_dict()
     if request_header.get('auth_provider') != 'github':

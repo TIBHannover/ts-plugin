@@ -1,6 +1,5 @@
-from user_service.libs.decorators import error_handler_decorator, authentication_required
 from user.models import UserModel, RoleModel
-from user_service.libs.auth import Auth
+from user.libs.auth import Auth
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required
@@ -18,7 +17,7 @@ from user_service.libs.utils import create_json_response
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def is_entity_admin(request):
     auth_object_dict = get_headers_dict()
     user = UserModel.objects.filter(username=get_username_from_request()).first()
@@ -35,7 +34,7 @@ def is_entity_admin(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def is_system_admin():    
     user = UserModel.objects.filter(username=get_username_from_request()).first()
     client_ts = get_client_id_from_request()

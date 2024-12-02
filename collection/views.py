@@ -1,4 +1,3 @@
-from turtle import rt
 from user.models import UserModel
 from .models import CollectionModel
 from datetime import datetime as _time
@@ -14,14 +13,14 @@ from django.http import HttpResponseBadRequest, Http404
 
 
 
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods['POST']
+@require_http_methods(['POST'])
 def create(request):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
@@ -53,7 +52,7 @@ def create(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def get(request, collection_id):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
@@ -66,7 +65,7 @@ def get(request, collection_id):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def get_list():
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
@@ -76,7 +75,7 @@ def get_list():
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["POST"]
+@require_http_methods(["POST"])
 def update(request, collection_id):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
@@ -109,7 +108,7 @@ def update(request, collection_id):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["POST"]
+@require_http_methods(["POST"])
 def delete(request, collection_id):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()

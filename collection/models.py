@@ -10,7 +10,7 @@ class CollectionModel(models.Model):
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField(blank=True, null=True)
     owner = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name='user_collections')
-    ontology_ids = ArrayField(models.CharField)
+    ontology_ids = ArrayField(models.CharField())
     public = models.BooleanField(blank=True, null=True, default=True)
 
     class Meta:

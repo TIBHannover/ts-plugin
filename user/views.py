@@ -10,13 +10,13 @@ from django.http import Http404
 from django.views import View
 
 
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def ping(request):
     return create_json_response({"response": "Pong"})
 
 
 @error_handler_decorator
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def login():
     auth_object_dict = get_headers_dict()
     auth = Auth(**auth_object_dict)
@@ -53,7 +53,7 @@ def login():
 
 
 @error_handler_decorator
-@require_http_methods["GET"]
+@require_http_methods(["GET"])
 def validate_login():
     auth_object_dict = get_headers_dict()
     username = get_username_from_request()
@@ -67,7 +67,7 @@ def validate_login():
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods["POST"]
+@require_http_methods(["POST"])
 def save_settings(request):
     username = get_username_from_request()
     settings = request.json()

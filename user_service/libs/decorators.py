@@ -1,4 +1,4 @@
-from django.http import HttpResponse, HTTPException
+from django.shortcuts import HttpResponse
 from django.core.exceptions import PermissionDenied, BadRequest
 from user_service.middlewares.request import get_headers_dict, get_request_method
 from user.models import UserModel
@@ -56,13 +56,13 @@ def error_handler_decorator(func):
             response = HttpResponse(str(e), status=400)
             return response
 
-        except HTTPException as e:
-            # if current_app.config.get("DEBUG_MODDE"):
-            # raise
-            response = HttpResponse(e.get_response(), status=e.code)
-            # logging.debug(e.get_response())
-            print(e.get_response(), flush=True)
-            return response
+        # except HTTPException as e:
+        #     # if current_app.config.get("DEBUG_MODDE"):
+        #     # raise
+        #     response = HttpResponse(e.get_response(), status=e.code)
+        #     # logging.debug(e.get_response())
+        #     print(e.get_response(), flush=True)
+        #     return response
 
         except Exception as e:
             # raise
