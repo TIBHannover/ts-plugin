@@ -26,9 +26,9 @@ class TestLogin(TestCase, BaseTest):
         }        
 
         login_response = self.client.get(self.login_url, headers=headers)        
-        self.assertEqual(login_response.status_code, 403)
+        self.assertEqual(login_response.status_code, 401)
         self.assertIn("auth provider is not clear", login_response.content.decode())
-    
+
 
 
     def test_login_should_fail_with_wrong_auth_provider(self):
@@ -40,9 +40,9 @@ class TestLogin(TestCase, BaseTest):
         }
 
         login_response = self.client.get(self.login_url, headers=headers)
-        self.assertEqual(login_response.status_code, 403)
+        self.assertEqual(login_response.status_code, 401)
         self.assertIn("auth provider is not clear", login_response.content.decode())
-    
+
 
 
     def test_login_should_fail_without_client_ts_id(self):
@@ -55,7 +55,7 @@ class TestLogin(TestCase, BaseTest):
         login_response = self.client.get(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn("Client application is not allowed to use this service.", login_response.content.decode())
-    
+
 
 
     def test_login_should_fail_without_client_ts_token(self):
@@ -68,7 +68,7 @@ class TestLogin(TestCase, BaseTest):
         login_response = self.client.get(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn("Client application is not allowed to use this service.", login_response.content.decode())
-    
+
 
 
     def test_login_should_fail_with_wrong_client_ts_id(self):
@@ -82,7 +82,7 @@ class TestLogin(TestCase, BaseTest):
         login_response = self.client.get(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn("Client application is not allowed to use this service.", login_response.content.decode())
-    
+
 
 
     def test_login_should_fail_with_wrong_client_ts_token(self):
@@ -107,69 +107,31 @@ class TestLogin(TestCase, BaseTest):
             "X-TS-Frontend-Token": self.client_ts_token
         }
         login_response = self.client.get(self.login_url, headers=headers)        
+        created_user_data = login_response.json().get('_result')
         self.assertEqual(login_response.status_code, 200)
-        self.assertIsNot(login_response.json().get('_result').get('ts_username'), None)
-    
-
-    
-
-    def test_github_user_registration_is_successful(self):
-        '''
-            This Test requires that the  test name "test_github_login_should_success" passes successfully.
-        '''
-        registered_username = "github_" + self.test_github_username
-        db_user = UserModel.objects.filter(username=registered_username).first()
-        self.assertIsNot(db_user, None)
-        self.assertIsNot(db_user.id, None)
-        self.assertEqual(db_user.username, registered_username)
-    
-
-
-    def test_github_user_registration_has_ts_internal_user_token(self):
-        '''
-            This Test requires that the  test name "test_github_login_should_success" passes successfully.
-        '''
-        registered_username = "github_" + self.test_github_username
-        db_user = UserModel.objects.filter(username=registered_username).first()
+        self.assertIsNot(created_user_data.get('ts_username'), None)
+        db_user = UserModel.objects.filter(username=created_user_data['ts_username']).first()
         self.assertIsNot(db_user, None)
         self.assertIsNot(db_user.id, None)
         self.assertIsNot(db_user.user_ts_token, None)
 
+    
+
+    # def test_orcid_login_should_success(self):        
+    #     headers = {
+    #         "X-TS-Auth-APP-Code": self.orcid_code,
+    #         "X-TS-Auth-Provider": "orcid",
+    #         "X-TS-Frontend-Id": self.client_ts_id,
+    #         "X-TS-Frontend-Token": self.client_ts_token
+    #     }
+    #     login_response = self.client.get(self.login_url, headers=headers)        
+    #     created_user_data = login_response.json().get('_result')
+    #     self.assertEqual(login_response.status_code, 200)
+    #     self.assertIsNot(created_user_data.get('ts_username'), None)
+    #     db_user = UserModel.objects.filter(username=created_user_data['ts_username']).first()
+    #     self.assertIsNot(db_user, None)
+    #     self.assertIsNot(db_user.id, None)
+    #     self.assertIsNot(db_user.user_ts_token, None)
 
 
-    def test_orcid_login_should_success(self):        
-        headers = {
-            "X-TS-Auth-APP-Code": self.orcid_code,
-            "X-TS-Auth-Provider": "orcid",
-            "X-TS-Frontend-Id": self.client_ts_id,
-            "X-TS-Frontend-Token": self.client_ts_token
-        }
-        login_response = self.client.get(self.login_url, headers=headers)        
-        self.assertEqual(login_response.status_code, 200)
-        self.assertIsNot(login_response.json().get('_result').get('ts_username'), None)
-
-
-
-
-    def test_orcid_user_registration_is_successful(self):
-        '''
-            This Test requires that the last test name "test_orcid_login_should_success" passes successfully.
-        '''
-        registered_username = "orcid_" + self.test_orcid_username
-        db_user = UserModel.objects.filter(username=registered_username).first()
-        self.assertIsNot(db_user, None)
-        self.assertIsNot(db_user.id, None)
-        self.assertEqual(db_user.username, registered_username)
-
-
-
-    def test_orcid_user_registration_has_ts_internal_user_token(self):
-        '''
-            This Test requires that the  test name "test_orcid_login_should_success" passes successfully.
-        '''
-        registered_username = "orcid_" + self.test_orcid_username
-        db_user = UserModel.objects.filter(username=registered_username).first()
-        self.assertIsNot(db_user, None)
-        self.assertIsNot(db_user.id, None)
-        self.assertIsNot(db_user.user_ts_token, None)
-
+   

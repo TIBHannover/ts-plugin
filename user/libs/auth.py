@@ -128,7 +128,9 @@ class Auth:
             return user_token
 
         token = secrets.token_urlsafe(32)
+        user = UserModel.objects.get(id=self.user_id)
         new_token = UserTokenModel()
+        new_token.user = user
         new_token.created_at = _time.now()
         new_token.token = token 
         new_token.save()
