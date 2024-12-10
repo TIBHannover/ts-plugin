@@ -1,11 +1,8 @@
 from django.test import TestCase
-from user.models import RoleModel, UserModel, UserTokenModel
-from note.models import NoteModel
-from datetime import datetime as _time
-from django.conf import settings
 from user_service.libs.test_config import BaseTest
 import copy
 import json
+from user_service.libs.test_helpers import TestHelper
 
 
 class TestReport(TestCase, BaseTest):
@@ -27,64 +24,11 @@ class TestReport(TestCase, BaseTest):
             "creatorUsername": "test-user"
         }
 
-
-        user_github = UserModel(
-            username=cls.test_github_username,
-            name=settings.GITHUB_LOGIN_USERNAME,
-            created_at=_time.now(),
-            auth_provider='github',
-            client_ts=cls.client_ts_id
-        )
-        user_orcid = UserModel(
-            username=cls.test_orcid_username,
-            name=settings.ORCID_LOGIN_USERNAME,
-            created_at=_time.now(),
-            auth_provider='orcid',
-            client_ts=cls.client_ts_id
-        )
-        user_github.save()
-        user_orcid.save()
-        user_token_github = UserTokenModel(
-            user=user_github,
-            created_at=_time.now(),
-            token=cls.test_github_user_ts_token
-        )
-        user_token_orcid = UserTokenModel(
-            user=user_orcid,
-            created_at=_time.now(),
-            token=cls.test_orcid_user_ts_token
-        )
-
-        user_token_github.save()
-        user_token_orcid.save()
-        admin_role = RoleModel(
-            user=user_github,
-            created_at= _time.now(),
-            target_object_id= "system",
-            target_object_type= "system",
-            role= "admin",
-            client_ts= cls.client_ts_id,
-            role_holder_email= "me@tib.eu"
-        )
-        admin_role.save()
-
-        note = NoteModel(
-            creator= user_github,
-            created_at= _time.now(),
-            ontology_id= cls.test_ontology_id,
-            content= "Test Content",
-            title="Test Note",
-            semantic_component_type= "class",
-            client_ts= cls.client_ts_id,
-            semantic_component_iri= "some_iri",
-            semantic_component_label= "Test Label",
-            visibility= "public",
-            parent_ontology_id=cls.test_parent_ontology_id,
-        ) 
-        note.save()
+        user_github, _ = TestHelper.createGitHubUser()
+        TestHelper.createOrcidUser()
+        TestHelper.createSystemAdmin(user_github)
+        note = TestHelper.createNote(user_github)
         cls.public_note_id = note.id
-
-
         cls.report_form_data['objectId'] = note.id   
         cls.resolve_report_form_data['objectId'] = note.id 
         cls.report_create_url = '/report/create/' 
