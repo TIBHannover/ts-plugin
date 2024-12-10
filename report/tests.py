@@ -27,7 +27,14 @@ class TestReport(TestCase, BaseTest):
         }
 
 
-        user = UserModel.objects.filter(username=settings.test_github_username).first()
+        user = UserModel.objects.filter(
+            username=cls.test_github_username,
+            name=settings.GITHUB_LOGIN_USERNAME,
+            created_at=_time.now(),
+            auth_provider='github',
+            client_ts='generel'
+        )
+        user.save()
         admin_role = RoleModel(
             user=user,
             created_at= _time.now(),
@@ -58,8 +65,8 @@ class TestReport(TestCase, BaseTest):
 
         cls.report_form_data['objectId'] = note.id   
         cls.resolve_report_form_data['objectId'] = note.id 
-        cls.report_create_url = cls.app_internal_base_url + '/report/create' 
-        cls.report_resolve_url = cls.app_internal_base_url + '/report/resolve'        
+        cls.report_create_url = '/report/create' 
+        cls.report_resolve_url = '/report/resolve'        
 
 
     

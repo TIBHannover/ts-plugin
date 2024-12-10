@@ -1,0 +1,26 @@
+
+version: "3.0"
+services:
+  db-test:
+    image: postgres:15
+    container_name: db-test
+    restart: always
+    ports:
+      - 5123:5432
+    env_file:
+      - .db.env
+    volumes:
+      - ../../pDataTest:/var/lib/postgresql/data 
+
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -t 1"]
+      interval: 30s
+      timeout: 60s
+      retries: 10
+      start_period: 60s
+    networks:
+      - django-test
+
+networks:
+  django-test:

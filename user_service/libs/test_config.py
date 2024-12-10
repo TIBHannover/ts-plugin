@@ -4,9 +4,9 @@ class BaseTest:
 
     test_ontology_id = "vibso"
     test_parent_ontology_id = "bfo" 
-    app_internal_base_url = settings.APP_INTERNAL_BASE_URL                
-    github_access_token = settings.GITHUB_TEST_ACCESS_TOKE
-    orcid_access_token = settings.ORCID_TEST_ACCESS_TOKE
+    app_internal_base_url = ""             
+    github_access_token = settings.GITHUB_TEST_ACCESS_TOKEN
+    orcid_access_token = settings.ORCID_TEST_ACCESS_TOKEN
     orcid_id = settings.ORCID_LOGIN_USERNAME
     test_github_username = "github_" + settings.GITHUB_LOGIN_USERNAME
     test_github_user_ts_token = settings.GITHUB_USER_TS_TOKEN
