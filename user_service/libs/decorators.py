@@ -49,6 +49,7 @@ def error_handler_decorator(func):
             return response
 
         except PermissionDenied as e:
+            # print(e)
             response = HttpResponse(str(e), status=401)
             return response
 
@@ -69,6 +70,7 @@ def error_handler_decorator(func):
             # if current_app.config.get("DEBUG_MODDE"):
             # raise
             # logging.error(e)
+            raise 
             print(e, flush=True)
             response = HttpResponse(
                 "Server Issue",

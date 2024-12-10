@@ -16,7 +16,7 @@ class Email:
 
 
     def report_content_to_admins(self): 
-        role_model = RoleModel(client=self.client_ts)       
+        role_model = RoleModel(client_ts=self.client_ts)       
         recipient_email = role_model.get_system_admin_emails()             
         if len(recipient_email) == 0:
             # No system admin. 

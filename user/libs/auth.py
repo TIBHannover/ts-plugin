@@ -137,11 +137,11 @@ class Auth:
 
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
         if not self.user_token:
-            raise PermissionError("Not Authorized user token")
+            raise PermissionDenied("Not Authorized user token")
 
         user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
         if not user_token or user_token.token != self.user_token:
-            raise PermissionError("Not Authorized user token")
+            raise PermissionDenied("Not Authorized user token")
 
         return True
 

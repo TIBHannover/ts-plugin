@@ -12,7 +12,7 @@ class UserModel(models.Model):
     username = models.CharField()
     name = models.CharField(blank=True, null=True)
     created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    updated_at = models.DateTimeField(blank=True, null=True)
     auth_provider = models.CharField()
     client_ts = models.CharField()
     user_extra = models.JSONField(blank=True, null=True)
@@ -148,6 +148,14 @@ class RoleModel(models.Model):
 
     class Meta:
         db_table = "roles"
+
+    def to_dict(self):
+        return {
+            "created_at": self.created_at,
+            "target_object_type": self.target_object_type,
+            "role": self.role,
+            "client_ts": self.client_ts
+        }
 
 
     def get_system_admin_emails(self) -> list:

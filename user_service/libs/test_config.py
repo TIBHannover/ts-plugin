@@ -1,5 +1,5 @@
 from django.conf import settings
-
+ 
 class BaseTest:
 
     test_ontology_id = "vibso"
@@ -16,7 +16,7 @@ class BaseTest:
     client_ts_token = settings.FRONTEDN_AUTH_TOKEN
     github_request_headers = {
         "Authorization": github_access_token,
-        # "Content-Type": "application/json",
+        "Content-Type": "application/json",
         "X-TS-Auth-Provider": "github",             
         "X-TS-Frontend-Id": client_ts_id,
         "X-TS-Frontend-Token": client_ts_token,
@@ -26,7 +26,7 @@ class BaseTest:
 
     orcid_request_headers = {
         "Authorization": orcid_access_token, 
-        # "Content-Type": "application/json",                 
+        "Content-Type": "application/json",                 
         "X-TS-Orcid-Id": orcid_id,
         "X-TS-Auth-Provider": "orcid",
         "X-TS-Frontend-Id": client_ts_id,
@@ -38,7 +38,7 @@ class BaseTest:
     
     guest_request_headers = {
         "Authorization": "",
-        # "Content-Type": "application/json",
+        "Content-Type": "application/json",
         "X-TS-Auth-Provider": "github",             
         "X-TS-Frontend-Id": client_ts_id,
         "X-TS-Frontend-Token": client_ts_token,

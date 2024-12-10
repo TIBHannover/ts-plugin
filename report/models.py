@@ -18,6 +18,13 @@ class ReportModel(models.Model):
     class Meta:
         db_table = "reports"
 
+    def to_dict(self):
+        return {
+            "created_at": self.created_at,
+            "reported_object_type": self.reported_object_type,
+            "client_ts": self.client_ts
+        }
+
     def resolve(self) -> bool:
         self.status = RESOLVED_STATUS
         self.save()
