@@ -118,7 +118,7 @@ class UserModel(models.Model):
 
 
 class UserTokenModel(models.Model):
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE)
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="user_ts_token")
     created_at = models.DateTimeField()
     token = models.CharField()
 

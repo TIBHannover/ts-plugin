@@ -17,7 +17,7 @@ def ping(request):
 
 @error_handler_decorator
 @require_http_methods(["GET"])
-def login():
+def login(request):
     auth_object_dict = get_headers_dict()
     auth = Auth(**auth_object_dict)
     auth.abort_if_client_app_not_valid()
@@ -54,7 +54,7 @@ def login():
 
 @error_handler_decorator
 @require_http_methods(["GET"])
-def validate_login():
+def validate_login(request):
     auth_object_dict = get_headers_dict()
     username = get_username_from_request()
     user_id = UserModel.get_user_id_by_username(username=username)
