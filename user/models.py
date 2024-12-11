@@ -138,7 +138,7 @@ class UserTokenModel(models.Model):
 
 
 class RoleModel(models.Model):
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE)
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="user_roles")
     created_at = models.DateTimeField()
     target_object_id = models.CharField()
     target_object_type = models.CharField()
