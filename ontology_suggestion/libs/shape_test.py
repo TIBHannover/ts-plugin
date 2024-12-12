@@ -17,9 +17,12 @@ def testShape(ontology_purl: str) -> Union[ValidationResult, bool]:
     try:
         tesetUrl = "https://www.itb.ec.europa.eu/shacl/shacl/api/validate"
         headers = {"Content-Type": "application/json", "Accept": "text/turtle"}
+        contentType = (
+            "application/rdf+xml" if ".ttl" not in ontology_purl else "text/turtle"
+        )
         data = {
             "contentToValidate": ontology_purl,
-            "contentSyntax": "application/rdf+xml",
+            "contentSyntax": contentType,
             "embeddingMethod": "URL",
             "validationType": "extended",
             "reportSyntax": "application/ld+json",
