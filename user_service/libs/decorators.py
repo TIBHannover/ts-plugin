@@ -1,5 +1,6 @@
 from django.shortcuts import HttpResponse
 from django.core.exceptions import PermissionDenied, BadRequest
+from django.http import Http404
 from user_service.middlewares.request import get_headers_dict, get_request_method
 from user.models import UserModel
 from user.libs.auth import Auth
@@ -55,6 +56,10 @@ def error_handler_decorator(func):
 
         except BadRequest as e:
             response = HttpResponse(str(e), status=400)
+            return response
+
+        except Http404 as e:
+            response = HttpResponse(str(e), status=404)
             return response
 
         # except HTTPException as e:

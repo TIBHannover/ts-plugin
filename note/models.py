@@ -116,7 +116,7 @@ class NoteModel(models.Model):
             comment_count = note.note_comments.count()
             note_dict = note.to_dict()
             note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
-            note["comments_count"] = comment_count
+            note_dict["comments_count"] = comment_count
             result.append(note_dict)
 
         return {"notes": result, "count_of_all_notes": count_of_all_notes}
@@ -139,7 +139,7 @@ class NoteModel(models.Model):
         if self.client_ts != client_ts:
             return False
 
-        if self.note.visibility not in visibilities and self.creator.id != user_id:
+        if self.visibility not in visibilities and self.creator.id != user_id:
             return False
 
         return True

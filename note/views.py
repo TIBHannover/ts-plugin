@@ -1,3 +1,4 @@
+import user
 from user_service.libs.utils import (
     create_json_response, 
     add_to_dict_if_value_is_not_none, 
@@ -103,7 +104,7 @@ def update(request):
 
     note_to_update = NoteModel.objects.filter(id=noteId).first()
     if not note_to_update:
-        return Http404("Note does not exist.")
+        raise Http404("Note does not exist.")
 
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
@@ -158,7 +159,7 @@ def list(request):
     note_list_conditions["user_id"] = user_id
     note_list_conditions["get_notes_from_children"] = False
     note_list_conditions["pinned"] = True
-
+    
     pinned_notes = []
     if not target_iri:
         # For the general note list, we need pinned ones. For iri-specific notes, pinned are not needed.
@@ -177,13 +178,13 @@ def list(request):
 
     notes = pinned_notes + notes
     for note in notes:
-        note_report = ReportModel(reported_object_type="note", reported_object_id=note["id"])
+        note_report = ReportModel.objects.filter(reported_object_type="note", reported_object_id=note["id"]).first()
         note["can_edit"] = auth.user_can_edit_object(
             objectModel=NoteModel,
             object_id=note["id"],
             role_target_object_id=ontology_id,
         )
-        note["is_reported"] = note_report.is_reported()
+        note["is_reported"] = True if note_report else False
 
     notes_total_count = notes_and_stats["count_of_all_notes"]
     stats = {}
@@ -206,34 +207,34 @@ def get(request, note_id):
     auth_object_dict = get_headers_dict()
     user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
     auth_object_dict["user_id"] = user_id
-    auth = Auth(**auth_object_dict)
+    _auth = Auth(**auth_object_dict)
     client_id = get_client_id_from_request() 
     try:
-        auth.abort_if_user_token_is_not_valid()
+        _auth.abort_if_user_token_is_not_valid()
     except:
         user_id = -1
 
     note = NoteModel.objects.filter(id=note_id).first()
     if not note:
-        return Http404("Note does not exist")
+        raise Http404("Note does not exist")
 
-    _auth = Auth(user_id=user_id)
+    _auth.user_id = user_id
     can_edit = _auth.user_can_edit_object(
         objectModel=NoteModel,
         object_id=note.id,
         role_target_object_id=note.ontology_id,
     )
-    if not note.can_visit(user_id=user_id, client_ts=client_id, is_guest=_auth.user_is_guests()):
-        return Http404("Note does not exist")
+    if not note.can_visit(user_id=user_id, client_ts=client_id, is_guest=_auth.user_is_guest()):
+        raise Http404("Note does not exist")
 
     
     note_report_count = ReportModel.objects.filter(
         reported_object_type="note", reported_object_id=note.id
     ).count()
-    note["is_reported"] = True if note_report_count > 0 else False
-    note["can_edit"] = can_edit
-    note["imported"] = False if ontology_id == note.ontology_id else True
     note_dict = note.to_dict()
+    note_dict["is_reported"] = True if note_report_count > 0 else False
+    note_dict["can_edit"] = can_edit
+    note_dict["imported"] = False if ontology_id == note.ontology_id else True
     if with_comments:
         note_dict['comments'] = []
         for comment in note.note_comments.all():
@@ -242,7 +243,7 @@ def get(request, note_id):
                 reported_object_type="comment", reported_object_id=comment.id
             ).count()
             comment_dict["is_reported"] = True if comment_report_count > 0 else False
-            comment_dict["can_edit"] = auth.user_can_edit_object(
+            comment_dict["can_edit"] = _auth.user_can_edit_object(
                 objectModel=NoteCommentModel,
                 object_id=comment.id,
                 role_target_object_id=note.ontology_id,
@@ -278,7 +279,7 @@ def create_comment(request):
     note = NoteModel.objects.get(id=note_id)
     client_id = get_client_id_from_request()
     if not note.can_visit(user_id=user.id, client_ts=client_id, is_guest=_auth.user_is_guests()):
-        return Http404("Note does not exist")
+        raise Http404("Note does not exist")
 
     note_comment_record_dict = {
         "creator": user,
@@ -312,7 +313,7 @@ def update_comment(request):
 
     comment_to_update = NoteCommentModel.objects.filter(id=comment_id).first()
     if not comment_to_update:
-        return Http404("Comment does not exist.")
+        raise Http404("Comment does not exist.")
 
     _auth = Auth(user_id=user.id, client_ts_id=frontend_id)
     can_edit = _auth.user_can_edit_object(
@@ -353,7 +354,7 @@ def delete(request):
 
     object = objectModel.objects.filter(id=object_id).first()
     if not object:
-        return Http404("Object not found")
+        raise Http404("Object not found")
     object.delete()
     return create_json_response({"deleted": not object.active})
     
@@ -394,7 +395,7 @@ def update_pin(request):
     updates = {"pinned": pinned}
     note_to_update = NoteModel.objects.filter(id=note_id).first()
     if not note_to_update:
-        return Http404("Note does not exist.")
+        raise Http404("Note does not exist.")
 
     if note_to_update.visibility == "me":
         return HttpResponseBadRequest("Bad request: Private notes cannot be pinned.")

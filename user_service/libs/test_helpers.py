@@ -47,19 +47,19 @@ class TestHelper:
 
 
     @staticmethod
-    def createNote(user:UserModel, visibility="public"):
+    def createNote(user:UserModel, visibility="public", component_type="ontology", ontology_id="vibso", parent_ontology_id=""):
         note = NoteModel(
             creator= user,
             created_at= _time.now(),
-            ontology_id=  "vibso",
+            ontology_id=  ontology_id,
             content= "Test Content",
             title="Test Note",
-            semantic_component_type= "class",
+            semantic_component_type= component_type,
             client_ts= TestHelper.client_ts,
             semantic_component_iri= "some_iri",
             semantic_component_label= "Test Label",
             visibility= visibility,
-            parent_ontology_id="bfo",
+            parent_ontology_id=parent_ontology_id,
         ) 
         note.save()
         return note

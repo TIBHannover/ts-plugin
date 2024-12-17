@@ -89,6 +89,7 @@ class Auth:
 
             return False
         except:
+            # raise
             return True
 
 
@@ -186,7 +187,7 @@ class Auth:
                     user__id=self.user_id,
                     target_object_id=col,
                     target_object_type="collection",
-                    client=self.client_ts_id,
+                    client_ts=self.client_ts_id,
                 ).first()
                 if collectio_admin:
                     return True
