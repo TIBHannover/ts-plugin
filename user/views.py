@@ -1,4 +1,3 @@
-from note.models import CLIENT_TS
 from user_service.libs.decorators import error_handler_decorator, authentication_required
 from user_service.libs.utils import create_json_response
 from django.views.decorators.http import require_http_methods

@@ -16,8 +16,10 @@ from user_service.libs.decorators import (
 import math
 from django.views.decorators.http import require_http_methods
 from user_service.middlewares.request import get_client_id_from_request, get_headers_dict, get_username_from_request
-from django.http import HttpResponseServerError, Http404, HttpResponseNotAllowed, HttpResponseBadRequest
+from django.http import HttpResponseServerError, Http404, HttpResponseBadRequest
+from django.core.exceptions import PermissionDenied
 from django.conf import settings
+import json
 
 
 DEFAULT_NOTE_LIST_SIZE = 10
@@ -33,7 +35,7 @@ def ping(request):
 @authentication_required
 @require_http_methods(['POST'])
 def create(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     creator_username = get_username_from_request()
     title = payload["title"]
@@ -73,7 +75,7 @@ def create(request):
 @authentication_required
 @require_http_methods(['PUT'])
 def update(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     noteId = payload["noteId"]
     title = payload.get("title")
@@ -111,7 +113,7 @@ def update(request):
         objectModel=NoteModel, object_id=noteId, role_target_object_id=ontology_id
     )
     if not can_edit:
-        return HttpResponseNotAllowed("Not Authorized")
+        raise PermissionDenied("Not Authorized")
 
     upadated_note = note_to_update.update_record(updates=updates)
 
@@ -265,7 +267,7 @@ def get(request, note_id):
 @authentication_required
 @require_http_methods(['POST'])
 def create_comment(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     auth_object_dict = get_headers_dict()
     note_id = payload["noteId"]
     content = payload["content"]
@@ -297,7 +299,7 @@ def create_comment(request):
 @authentication_required
 @require_http_methods(['PUT'])
 def update_comment(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     username = get_username_from_request()
     content = payload.get("content")
@@ -319,7 +321,7 @@ def update_comment(request):
         role_target_object_id=ontology_id,
     )
     if not can_edit:
-        return HttpResponseNotAllowed("Not Authorized")
+        raise PermissionDenied("Not Authorized")
 
     comment_to_update.update_record(updates=updates)
     return create_json_response({"comment_updated": comment_to_update.to_dict()})
@@ -329,7 +331,7 @@ def update_comment(request):
 @authentication_required
 @require_http_methods(['DELETE'])
 def delete(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     username = get_username_from_request()
     object_id = payload["objectId"]
@@ -347,13 +349,13 @@ def delete(request):
     )
 
     if not can_edit:
-        return HttpResponseNotAllowed("Not Authorized")
+        raise PermissionDenied("Not Authorized")
 
     object = objectModel.objects.filter(id=object_id).first()
     if not object:
         return Http404("Object not found")
     object.delete()
-    return create_json_response({"deleted": True})
+    return create_json_response({"deleted": not object.active})
     
 
 
@@ -361,7 +363,7 @@ def delete(request):
 @authentication_required
 @require_http_methods(['PUT'])
 def update_pin(request):
-    payload = request.json()
+    payload = json.loads(request.body)
     auth_object_dict = get_headers_dict()
     ontology_id = payload.get("ontology")
     note_id = payload.get("note_id")
@@ -371,7 +373,7 @@ def update_pin(request):
     auth_object_dict["user_id"] = user.id
     auth = Auth(**auth_object_dict)
     if not auth.is_user_admin_for_entity(ontologyId=ontology_id):
-        return HttpResponseNotAllowed("Not Authorized")
+        raise PermissionDenied("Not Authorized")
 
     if pinned not in ["true", "false"]:
         return HttpResponseBadRequest("Bad Request. pinned value has to be boolean.")

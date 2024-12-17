@@ -55,6 +55,11 @@ class NoteModel(models.Model):
             super().save(**kwargs)
         else:
             return
+
+
+    def delete(self, **kwargs):
+        self.active = False
+        self.save()
     
 
     def update_record(self, updates:dict) -> Union[bool, object]:
@@ -163,6 +168,12 @@ class NoteCommentModel(models.Model):
 
     class Meta:
         db_table = "note_comments"
+
+    
+    def delete(self, **kwargs):
+        self.active = False
+        self.save()
+
 
     def to_dict(self) -> dict:
         return {

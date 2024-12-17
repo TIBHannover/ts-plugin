@@ -1,5 +1,5 @@
 from user.models import UserModel, UserTokenModel, RoleModel
-from note.models import NoteModel
+from note.models import NoteModel, NoteCommentModel
 from django.conf import settings
 from datetime import datetime as _time
 
@@ -47,7 +47,7 @@ class TestHelper:
 
 
     @staticmethod
-    def createNote(user:UserModel):
+    def createNote(user:UserModel, visibility="public"):
         note = NoteModel(
             creator= user,
             created_at= _time.now(),
@@ -58,11 +58,23 @@ class TestHelper:
             client_ts= TestHelper.client_ts,
             semantic_component_iri= "some_iri",
             semantic_component_label= "Test Label",
-            visibility= "public",
+            visibility= visibility,
             parent_ontology_id="bfo",
         ) 
         note.save()
         return note
+
+
+    @staticmethod
+    def createCommentForNote(user: UserModel, note: NoteModel):
+        comment = NoteCommentModel(
+            creator=user,
+            created_at=_time.now(),
+            content="test comment",
+            note=note
+        )
+        comment.save()
+        return comment
 
 
     @staticmethod
@@ -79,6 +91,20 @@ class TestHelper:
         admin_role.save()
         return admin_role
 
+
+    @staticmethod
+    def createRole(user: UserModel, target_id:str, target_type:str, role="admin"):
+        role = RoleModel(
+            user=user,
+            created_at= _time.now(),
+            target_object_id= target_id,
+            target_object_type= target_type,
+            role= role,
+            client_ts= TestHelper.client_ts,
+            role_holder_email= "me@tib.eu"
+        )
+        role.save()
+        return role
 
 
 
