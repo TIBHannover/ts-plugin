@@ -1,4 +1,3 @@
-from logging import log
 from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from django.conf import settings
