@@ -36,6 +36,7 @@ def ping(request):
 @authentication_required
 @require_http_methods(['POST'])
 def create(request):
+    print(request.body)
     payload = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     creator_username = get_username_from_request()
