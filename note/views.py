@@ -276,9 +276,9 @@ def create_comment(request):
     auth_object_dict["user_id"] = user.id
     _auth = Auth(**auth_object_dict)
 
-    note = NoteModel.objects.get(id=note_id)
+    note = NoteModel.objects.filter(id=note_id).first()
     client_id = get_client_id_from_request()
-    if not note.can_visit(user_id=user.id, client_ts=client_id, is_guest=_auth.user_is_guests()):
+    if not note or not note.can_visit(user_id=user.id, client_ts=client_id, is_guest=_auth.user_is_guest()):
         raise Http404("Note does not exist")
 
     note_comment_record_dict = {
