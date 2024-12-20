@@ -83,7 +83,7 @@ def submit_github_issue(request):
     issue_type = _form['issueType']
     user = UserModel.objects.filter(username=username).first()
     github_issue_db_entry = {
-        "user_id": user.id,
+        "user": user,
         "created_at": _time.now(),
         "ontology_id": ontology_id,
         "issue_content": issue_content,
@@ -105,7 +105,7 @@ def submit_github_issue(request):
         json_result = resp.json()                    
         new_issue_url = json_result.get("html_url")
         github_issue_record.issue_url = new_issue_url
-        github_issue_record.create_record()            
+        github_issue_record.save()
         return create_json_response({'new_issue_url': new_issue_url})
     
     return HttpResponseServerError("Something went wrong.")
