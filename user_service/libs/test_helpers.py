@@ -1,5 +1,7 @@
+import collection
 from user.models import UserModel, UserTokenModel, RoleModel
 from note.models import NoteModel, NoteCommentModel
+from collection.models import CollectionModel
 from django.conf import settings
 from datetime import datetime as _time
 
@@ -106,7 +108,17 @@ class TestHelper:
         role.save()
         return role
 
+    
+    @staticmethod
+    def create_collection(user:UserModel, title:str, content:str, ontology_ids:[str]):
+        collection_model = CollectionModel(
+            title=title, 
+            owner=user,
+            created_at=_time.now(),
+            description=content, 
+            ontology_ids=ontology_ids
+        )
+        collection_model.save()
+        return collection_model
+                    
 
-
-
-        

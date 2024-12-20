@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
 from user_service.middlewares.request import get_username_from_request
 from django.http import HttpResponseBadRequest, Http404
+import json
 
 
 
@@ -24,7 +25,7 @@ def ping(request):
 def create(request):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
-    payload = request.json()
+    payload = json.loads(request.body)
     title = payload["title"]
     title = title.strip()
     description = payload.get("description")
@@ -58,7 +59,7 @@ def get(request, collection_id):
     user = UserModel.objects.filter(username=username).first()
     collection = CollectionModel.objects.filter(id=collection_id).first()
     if not collection or not collection.can_visit_edit(user.id):
-        return Http404("Collection not found")
+        raise Http404("Collection not found")
 
     return create_json_response({"collection": collection.to_dict()})
 
@@ -66,7 +67,7 @@ def get(request, collection_id):
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["GET"])
-def get_list():
+def get_list(request):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
     collections = user.user_collections.all()
@@ -75,12 +76,12 @@ def get_list():
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(["POST"])
+@require_http_methods(["PUT"])
 def update(request, collection_id):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
 
-    payload = request.json()
+    payload = json.loads(request.body)
     ontology_ids = payload["ontology_ids"]
     description = payload.get("description")
     title = payload.get("title")
@@ -101,20 +102,20 @@ def update(request, collection_id):
 
     collection = collection_model.update(collection_id=collection_id)
     if not collection:
-        return Http404("collection not found")
+        raise Http404("collection not found")
 
     return create_json_response({"collection": collection})
 
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(["POST"])
+@require_http_methods(["DELETE"])
 def delete(request, collection_id):
     username = get_username_from_request()
     user = UserModel.objects.filter(username=username).first()
     collection = CollectionModel.objects.filter(id=collection_id).first()
     if not collection or not collection.can_visit_edit(user.id):
-        return Http404("collection not found")
+        raise Http404("collection not found")
 
     collection.delete()
     return create_json_response({"deleted": True})
