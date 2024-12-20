@@ -205,7 +205,7 @@ class SearchSettingModel(models.Model):
         if record and record.id != id:
             return "Title already exists"
 
-        record = SearchSettingModel.query.filter(id=id, user=self.user).first()
+        record = SearchSettingModel.objects.filter(id=id, user=self.user).first()
         if record:
             record.title = self.title
             record.setting = self.setting

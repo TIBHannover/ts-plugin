@@ -7,6 +7,7 @@ from datetime import datetime as _time
 from user.models import UserModel, RoleModel, SearchSettingModel
 from django.http import Http404 
 from django.views import View
+import json
 
 
 @require_http_methods(["GET"])
@@ -101,7 +102,7 @@ class SearchSettings(View):
     def post(self, request, id=None):
         username = get_username_from_request()
         client_ts_id = get_client_id_from_request()
-        payload = request.json()
+        payload = json.loads(request.body)
         user = UserModel.objects.filter(username=username, client_ts=client_ts_id).first()
         search_setting_model = SearchSettingModel(
             user=user,
@@ -111,7 +112,7 @@ class SearchSettings(View):
             created_at=_time.now(),
         )
         search_setting_model.save()
-        return create_json_response({"saved": search_setting_model})
+        return create_json_response({"saved": search_setting_model.to_dict()})
 
 
 
@@ -133,7 +134,7 @@ class SearchSettings(View):
     def put(self, request, id):
         username = get_username_from_request()
         client_ts = get_client_id_from_request()
-        payload = request.json()
+        payload = json.loads(request.body)
         user = UserModel.objects.filter(username=username, client_ts=client_ts).first()
         setting = SearchSettingModel.objects.filter(id=id).first()
         if setting and setting.can_visit_edit(user_id=user.id):
@@ -144,8 +145,9 @@ class SearchSettings(View):
                 description=payload.get("description", ""),
             )
 
-            updated_search_setting = setting_model.update(id=id)
-            return create_json_response({"updated": updated_search_setting})
+            setting_model.update(id=id)
+            return create_json_response({"updated": setting_model.to_dict()})
+        raise Http404("Setting not found")
 
 
   

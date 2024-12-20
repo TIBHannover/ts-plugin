@@ -1,5 +1,5 @@
 import collection
-from user.models import UserModel, UserTokenModel, RoleModel
+from user.models import UserModel, UserTokenModel, RoleModel, SearchSettingModel
 from note.models import NoteModel, NoteCommentModel
 from collection.models import CollectionModel
 from django.conf import settings
@@ -10,7 +10,7 @@ class TestHelper:
     client_ts = "general"
 
     @staticmethod
-    def createGitHubUser():
+    def createGitHubUser()->[UserModel, UserTokenModel]:
         user_github = UserModel(
             username="github_" + settings.GITHUB_LOGIN_USERNAME,
             name=settings.GITHUB_LOGIN_USERNAME,
@@ -29,7 +29,7 @@ class TestHelper:
         return user_github, user_token_github
 
     @staticmethod
-    def createOrcidUser():
+    def createOrcidUser()->[UserModel, UserTokenModel]:
         user_orcid = UserModel(
             username="orcid_" + settings.ORCID_LOGIN_USERNAME,
             name=settings.ORCID_LOGIN_USERNAME,
@@ -49,7 +49,7 @@ class TestHelper:
 
 
     @staticmethod
-    def createNote(user:UserModel, visibility="public", component_type="ontology", ontology_id="vibso", parent_ontology_id=""):
+    def createNote(user:UserModel, visibility="public", component_type="ontology", ontology_id="vibso", parent_ontology_id="")->NoteModel:
         note = NoteModel(
             creator= user,
             created_at= _time.now(),
@@ -68,7 +68,7 @@ class TestHelper:
 
 
     @staticmethod
-    def createCommentForNote(user: UserModel, note: NoteModel):
+    def createCommentForNote(user: UserModel, note: NoteModel)->NoteCommentModel:
         comment = NoteCommentModel(
             creator=user,
             created_at=_time.now(),
@@ -80,7 +80,7 @@ class TestHelper:
 
 
     @staticmethod
-    def createSystemAdmin(user: UserModel):
+    def createSystemAdmin(user: UserModel)->RoleModel:
         admin_role = RoleModel(
             user=user,
             created_at= _time.now(),
@@ -95,7 +95,7 @@ class TestHelper:
 
 
     @staticmethod
-    def createRole(user: UserModel, target_id:str, target_type:str, role="admin"):
+    def createRole(user: UserModel, target_id:str, target_type:str, role="admin")->RoleModel:
         role = RoleModel(
             user=user,
             created_at= _time.now(),
@@ -110,7 +110,7 @@ class TestHelper:
 
     
     @staticmethod
-    def create_collection(user:UserModel, title:str, content:str, ontology_ids:[str]):
+    def create_collection(user:UserModel, title:str, content:str, ontology_ids:[str])->CollectionModel:
         collection_model = CollectionModel(
             title=title, 
             owner=user,
@@ -120,5 +120,17 @@ class TestHelper:
         )
         collection_model.save()
         return collection_model
-                    
+
+
+    @staticmethod
+    def create_search_setting(user:UserModel, title:str, description:str, settings:dict)->SearchSettingModel:
+        setting_model = SearchSettingModel(
+            title=title, 
+            user=user,
+            created_at=_time.now(),
+            description=description, 
+            setting=settings
+        )        
+        setting_model.save()
+        return setting_model
 
