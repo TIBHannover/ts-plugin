@@ -10,5 +10,5 @@ urlpatterns = [
     path("create_comment/", views.create_comment, name="create_comment"),
     path("update_comment/", views.update_comment, name="update_comment"),
     path("delete/", views.delete, name="delete"),
-    path("update_pin/", views.update_pin, name="update_pin"),
+    path("update_pin/", views.update_pin, name="update"),
 ]
