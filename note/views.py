@@ -238,6 +238,8 @@ def get(request, note_id):
     if with_comments:
         note_dict['comments'] = []
         for comment in note.note_comments.all():
+            if not comment.active:
+                continue
             comment_dict = comment.to_dict()
             comment_report_count = ReportModel.objects.filter(
                 reported_object_type="comment", reported_object_id=comment.id

@@ -139,6 +139,7 @@ def get_issue_templates_for_repo(request):
     if request_header.get('auth_provider') != 'github':
         return create_json_response({'error': "Only github users can use this feature"})
    
+    print(request.body)
     _form = json.loads(request.body)
     repo_url = _form["repo_url"]
     if "https://github.com/" not in repo_url:

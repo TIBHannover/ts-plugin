@@ -113,7 +113,7 @@ class NoteModel(models.Model):
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
         result = []
         for note in notes:
-            comment_count = note.note_comments.count()
+            comment_count = note.note_comments.filter(active=True).count()
             note_dict = note.to_dict()
             note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
             note_dict["comments_count"] = comment_count
