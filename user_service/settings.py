@@ -32,7 +32,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_METHODS = (
-    *default_headers,
+    *default_methods,
 )
 
 CORS_ALLOW_HEADERS = (
