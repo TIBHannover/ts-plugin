@@ -1,6 +1,8 @@
 
 from pathlib import Path
 import environ
+from corsheaders.defaults import default_methods
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -18,6 +20,33 @@ ALLOWED_HOSTS = []
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:8080',
+    'http://ols02.develop.service.tib.eu',
+    'https://terminology.nfdi4chem.de',
+    'https://terminology.nfdi4ing.de',
+    'https://terminology.tib.eu',
+    'http://ols03.develop.service.tib.eu',
+    'https://service.tib.eu'
+]
+
+CORS_ALLOW_METHODS = (
+    *default_headers,
+)
+
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "Authorization",
+    "X-TS-Frontend-Id",
+    "X-TS-Frontend-Token",
+    "X-TS-Auth-Provider",
+    "X-TS-Auth-APP-Code",
+    "X-TS-Orcid-Id",
+    "X-TS-User-Token",
+    "X-TS-User-Name",
+)
+
 
 # Application definition
 
@@ -28,6 +57,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "user",
     "report",
     "ontology_suggestion",
@@ -44,6 +74,7 @@ MIDDLEWARE = [
     "user_service.middlewares.request.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
