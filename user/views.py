@@ -70,7 +70,7 @@ def validate_login(request):
 @require_http_methods(["POST"])
 def save_settings(request):
     username = get_username_from_request()
-    settings = request.json()
+    settings = json.loads(request.body)
     setting_is_saved = UserModel.save_user_extra(username=username, user_extra=settings)
     return create_json_response({"saved": setting_is_saved})
 
