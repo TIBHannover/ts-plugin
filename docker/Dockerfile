@@ -4,7 +4,7 @@ FROM python:3.9-slim
 RUN apt-get -q -y update \
     && apt-get install -y gcc \
     && apt-get install -y curl \
-    && apt-get install -y nano \
+    && apt-get install -y vim \
     && apt-get install -y postgresql-client \
     && DEBIAN_FRONTEND=noninteractive apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y postfix && \
