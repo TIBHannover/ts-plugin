@@ -16,7 +16,7 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG_MODE", default=False)
 
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'service.tib.eu']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.service.tib.eu']
 FORCE_SCRIPT_NAME = env("SUB_PATH") if env("SUB_PATH") else ""
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
