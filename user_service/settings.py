@@ -23,6 +23,7 @@ CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
+    'http://localhost:8080',
     'http://localhost',
     'http://127.0.0.1',
     'http://ols02.develop.service.tib.eu',

@@ -4,12 +4,18 @@ from django.conf import settings
 
 class AaiLib:
     @staticmethod
-    def authenticate(code):
+    def authenticate(code, client_ts_id=None):
+        redirect_url = settings.DEFAULT_FRONTEND_REDIRECT_URL
+        if client_ts_id and client_ts_id == "general":
+            redirect_url = settings.GENERAL_FRONTEND_REDIRECT_URL
+        elif client_ts_id and client_ts_id == "nfdi4chem":
+            redirect_url = settings.NFDI4CHEM_FRONTEND_REDIRECT_URL
+
         data = {
             "code": code,
             "client_id": settings.AAI_CLIENT_ID,
             "client_secret": settings.AAI_CLIENT_SECRET,
-            "redirect_uri": settings.FRONTEND_REDIRECT_URL,
+            "redirect_uri": redirect_url,
             "grant_type": "authorization_code",
         }
         headers = {

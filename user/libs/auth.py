@@ -41,9 +41,9 @@ class Auth:
         if self.auth_provider == "github":
             return GithubLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "orcid":
-            return OrcidLib.authenticate(code=self.code)
+            return OrcidLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "native":
-            return AaiLib.authenticate(code=self.code)
+            return AaiLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "gitlab":
             return GitLabLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         return False
