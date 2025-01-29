@@ -17,13 +17,14 @@ DEBUG = env("DEBUG_MODE", default=False)
 
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.service.tib.eu']
-FORCE_SCRIPT_NAME = env("SUB_PATH") if env("SUB_PATH") else ""
+FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
-    'http://localhost:8080',
+    'http://localhost',
+    'http://127.0.0.1',
     'http://ols02.develop.service.tib.eu',
     'https://terminology.nfdi4chem.de',
     'https://terminology.nfdi4ing.de',
@@ -151,7 +152,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 FRONTEDN_AUTH_TOKEN = env("FRONTEDN_AUTH_TOKEN", default=None)
-SUB_PATH = env("SUB_PATH", default=None)
+SUB_PATH = env("SUB_PATH", default="")
 GITHUB_TS_USER_API_TOKEN = env("GITHUB_TS_USER_API_TOKEN", default=None)
 GITLAB_TS_USER_API_TOKEN = env("GITLAB_TS_USER_API_TOKEN", default=None)
 CONTACT_REQUEST_RECEIVER_REPO = env("CONTACT_REQUEST_RECEIVER_REPO", default=None)

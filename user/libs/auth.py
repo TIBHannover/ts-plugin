@@ -126,7 +126,7 @@ class Auth:
     def get_or_register_user_token_if_not_exist(self) -> str:
         user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
         if self.user_id and user_token:
-            return user_token
+            return user_token.token
 
         token = secrets.token_urlsafe(32)
         user = UserModel.objects.get(id=self.user_id)
