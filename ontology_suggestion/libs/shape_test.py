@@ -13,7 +13,7 @@ class ValidationResult(TypedDict):
     info: List[str]
 
 
-def testShape(ontology_purl: str) -> Union[ValidationResult, bool]:
+def test(ontology_purl: str) -> Union[ValidationResult, bool]:
     try:
         tesetUrl = "https://www.itb.ec.europa.eu/shacl/shacl/api/validate"
         headers = {"Content-Type": "application/json", "Accept": "text/turtle"}
@@ -39,7 +39,6 @@ def testShape(ontology_purl: str) -> Union[ValidationResult, bool]:
             "rdfReportSyntax": "string",
             "wrapReportDataInCDATA": False,
         }
-
         response = requests.post(tesetUrl, json=data, headers=headers)
         if response.status_code != 200:
             return False
@@ -65,6 +64,7 @@ def testShape(ontology_purl: str) -> Union[ValidationResult, bool]:
         return result
 
     except:
+        # raise
         return False
 
 

@@ -3,7 +3,7 @@ from user_service.libs.utils import create_json_response
 from user_service.libs.decorators import error_handler_decorator, authentication_required
 import requests
 import urllib.parse
-from .libs.shape_test import testShape 
+from .libs.shape_test import test as test_onto_shap 
 from django.views.decorators.http import require_http_methods
 import json
 from django.conf import settings
@@ -71,7 +71,7 @@ def create(request):
             if len(response) > 0:
                 raise BadRequest("suggestion exists.")
 
-        validation = testShape(ontoPurl)
+        validation = test_onto_shap(ontoPurl)
         if not validation:
             raise BadRequest("Validation process aborted")
 
@@ -132,9 +132,9 @@ def create(request):
 @authentication_required
 @require_http_methods(['GET'])
 def testshape(request):
-    data = request.GET
-    ontoPurl = data["purl"]
-    validation = testShape(ontoPurl)
+    args = request.GET
+    ontoPurl = args.get("purl")
+    validation = test_onto_shap(ontoPurl)
     if not validation:
         raise BadRequest("Validation process aborted")
     return create_json_response({"response": validation})
