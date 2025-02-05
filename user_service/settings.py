@@ -25,7 +25,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:8080',
     'http://localhost',
-    'http://127.0.0.1',
+    'http://127.0.0.1:3000',
     'http://ols02.develop.service.tib.eu',
     'https://terminology.nfdi4chem.de',
     'https://terminology.nfdi4ing.de',
@@ -83,6 +83,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'user_service.middlewares.cache.DisableCacheMiddleware',
 ]
 
 ROOT_URLCONF = "user_service.urls"
