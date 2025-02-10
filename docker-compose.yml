@@ -45,21 +45,6 @@ services:
     networks:
       - microservice
 
-  # rabbitQ:
-  #   image: rabbitmq:3-management
-  #   container_name: rabbitQ 
-  #   ports:
-  #     - 8585:15672
-  #   env_file:
-  #     - docker/user_service/rabbit.env 
-  #   networks:
-  #     - microservice
-      
 
 networks:
   microservice:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 192.168.112.0/20

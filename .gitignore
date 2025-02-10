@@ -3,5 +3,6 @@ pyrightconfig.json
 *.env
 __pycache__
 devnote
+.db.env
 
 
