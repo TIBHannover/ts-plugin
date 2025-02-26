@@ -17,6 +17,10 @@ class GithubLib:
             client_id = settings.NFDI4CHEM_GITHUB_CLIENT_ID
             client_secret = settings.NFDI4CHEM_GITHUB_CLIENT_SECRET
             redirect_url = settings.NFDI4CHEM_FRONTEND_REDIRECT_URL
+        elif client_ts_id and client_ts_id == "nfdi4ing":
+            client_id = settings.NFDI4ING_GITHUB_CLIENT_ID
+            client_secret = settings.NFDI4ING_GITHUB_CLIENT_SECRET
+            redirect_url = settings.NFDI4ING_FRONTEND_REDIRECT_URL
 
         data = {
             "code": code,

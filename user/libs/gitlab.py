@@ -10,6 +10,8 @@ class GitLabLib:
             redirect_url = settings.GENERAL_FRONTEND_REDIRECT_URL
         elif client_ts_id and client_ts_id == "nfdi4chem":
             redirect_url = settings.NFDI4CHEM_FRONTEND_REDIRECT_URL
+        elif client_ts_id and client_ts_id == "nfdi4ing":
+            redirect_url = settings.NFDI4ING_FRONTEND_REDIRECT_URL
         params = {
             "code": code,
             "client_id": settings.GITLAB_CLIENT_ID,
