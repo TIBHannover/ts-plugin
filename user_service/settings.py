@@ -1,6 +1,7 @@
 
 from pathlib import Path
 import environ
+import os
 from corsheaders.defaults import default_methods
 from corsheaders.defaults import default_headers
 
@@ -31,6 +32,10 @@ CORS_ALLOWED_ORIGINS = [
     'https://terminology.nfdi4ing.de',
     'https://terminology.tib.eu',
     'http://ols03.develop.service.tib.eu',
+    'https://service.tib.eu'
+]
+
+CSRF_TRUSTED_ORIGINS=[
     'https://service.tib.eu'
 ]
 
@@ -147,7 +152,8 @@ USE_I18N = True
 USE_TZ = True
 
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

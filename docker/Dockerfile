@@ -26,8 +26,10 @@ RUN pip install --upgrade pip \
 
 COPY . .
 
+
 RUN groupadd ${USERNAME} && \
     useradd -g ${USERNAME} ${USERNAME}
+
 
 RUN chown -R ${USERNAME}:www-data ${WORKING_DIR} \
     && chmod -R u=rwx,g=rwx ${WORKING_DIR}
@@ -39,10 +41,12 @@ RUN echo ${USERNAME}' ALL=(ALL) NOPASSWD: '${POSTFIX_START_CMD} >> /etc/sudoers.
 RUN echo ${USERNAME}' ALL=(ALL) NOPASSWD: '${POSTFIX_COPY_RESOLV_CMD} >> /etc/sudoers.d/${USERNAME} && \
     chmod 0440 /etc/sudoers.d/${USERNAME}
 
+
 USER ${USERNAME}
 ENV PATH "$PATH:/home/${USERNAME}/.local/bin"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1 
+
 
 EXPOSE 8000
 
