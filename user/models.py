@@ -20,7 +20,7 @@ class UserModel(models.Model):
     is_blocked = models.BooleanField(blank=True, null=True, default=False)
 
     class Meta:
-        db_table = "users"
+        db_table = "ts_users"
         unique_together = (("username", "client_ts"),)
 
     def __str__(self) -> str:
