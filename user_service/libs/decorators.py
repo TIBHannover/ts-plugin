@@ -10,7 +10,9 @@ def authentication_required(func):
     def wrapper(*args, **kwargs):
         auth_object_dict = get_headers_dict()
         if get_request_method() != "OPTIONS":
-            user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+            user_id = UserModel.get_user_id_by_username(
+                username=auth_object_dict["username"]
+            )
             auth_object_dict["user_id"] = user_id
             auth_controller = Auth(**auth_object_dict)
             auth_controller.abort_if_not_authenticated()
@@ -32,7 +34,6 @@ def client_id_validation(func):
     return wrapper
 
 
-
 def error_handler_decorator(func):
     def wrapp_this_function(*args, **kwargs):
         try:
@@ -50,7 +51,7 @@ def error_handler_decorator(func):
             return response
 
         except PermissionDenied as e:
-            # print(e)
+            print(e)
             response = HttpResponse(str(e), status=401)
             return response
 
@@ -75,7 +76,7 @@ def error_handler_decorator(func):
             # if current_app.config.get("DEBUG_MODDE"):
             # raise
             # logging.error(e)
-            raise 
+            raise
             print(e, flush=True)
             response = HttpResponse(
                 "Server Issue",
