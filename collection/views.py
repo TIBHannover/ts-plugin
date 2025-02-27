@@ -7,7 +7,7 @@ from user_service.libs.decorators import (
 )
 from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
-from user_service.middlewares.request import get_username_from_request
+from user_service.middlewares.request import get_username_from_request, get_client_id_from_request
 from django.http import HttpResponseBadRequest, Http404
 import json
 
@@ -24,7 +24,8 @@ def ping(request):
 @require_http_methods(['POST'])
 def create(request):
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    frontend_id = get_client_id_from_request()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     payload = json.loads(request.body)
     title = payload["title"]
     title = title.strip()
@@ -56,7 +57,8 @@ def create(request):
 @require_http_methods(["GET"])
 def get(request, collection_id):
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    frontend_id = get_client_id_from_request()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     collection = CollectionModel.objects.filter(id=collection_id).first()
     if not collection or not collection.can_visit_edit(user.id):
         raise Http404("Collection not found")
@@ -69,7 +71,8 @@ def get(request, collection_id):
 @require_http_methods(["GET"])
 def get_list(request):
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    frontend_id = get_client_id_from_request()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     collections = user.user_collections.all()
     return create_json_response({"collections": [col.to_dict() for col in collections]})
 
@@ -79,7 +82,8 @@ def get_list(request):
 @require_http_methods(["PUT"])
 def update(request, collection_id):
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    frontend_id = get_client_id_from_request()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
 
     payload = json.loads(request.body)
     ontology_ids = payload["ontology_ids"]
@@ -112,7 +116,8 @@ def update(request, collection_id):
 @require_http_methods(["DELETE"])
 def delete(request, collection_id):
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    frontend_id = get_client_id_from_request()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     collection = CollectionModel.objects.filter(id=collection_id).first()
     if not collection or not collection.can_visit_edit(user.id):
         raise Http404("collection not found")

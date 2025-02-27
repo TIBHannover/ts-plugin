@@ -50,7 +50,7 @@ def create(request):
     if visibility.lower() not in ["me", "internal", "public"]:
         visibility = "me"
 
-    user = UserModel.objects.filter(username=creator_username).first()
+    user = UserModel.objects.filter(username=creator_username, client_ts=frontend_id).first()
 
     note_model_record_dict = {
         "creator_id": user.id,
@@ -107,7 +107,7 @@ def update(request):
         raise Http404("Note does not exist.")
 
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
 
     _auth = Auth(user_id=user.id, client_ts_id=frontend_id)
     can_edit = _auth.user_can_edit_object(
@@ -272,14 +272,14 @@ def get(request, note_id):
 def create_comment(request):
     payload = json.loads(request.body)
     auth_object_dict = get_headers_dict()
+    client_id = get_client_id_from_request()
     note_id = payload["noteId"]
     content = payload["content"]
-    user = UserModel.objects.filter(username=get_username_from_request()).first()
+    user = UserModel.objects.filter(username=get_username_from_request(), client_ts=client_id).first()
     auth_object_dict["user_id"] = user.id
     _auth = Auth(**auth_object_dict)
 
     note = NoteModel.objects.filter(id=note_id).first()
-    client_id = get_client_id_from_request()
     if not note or not note.can_visit(user_id=user.id, client_ts=client_id, is_guest=_auth.user_is_guest()):
         raise Http404("Note does not exist")
 
@@ -308,7 +308,7 @@ def update_comment(request):
     content = payload.get("content")
     comment_id = payload["comment_id"]
     ontology_id = payload["ontology_id"]
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     updates = {}
     updates["updated_at"] = _time.now()
     add_to_dict_if_value_is_not_none(updates, "content", content)
@@ -340,7 +340,7 @@ def delete(request):
     object_id = payload["objectId"]
     object_type = payload["objectType"]
     ontology_id = payload["ontology_id"]
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     objectModel = NoteModel
     if object_type != "note":
         objectModel = NoteCommentModel
@@ -368,11 +368,12 @@ def delete(request):
 def update_pin(request):
     payload = json.loads(request.body)
     auth_object_dict = get_headers_dict()
+    frontend_id = get_client_id_from_request()
     ontology_id = payload.get("ontology")
     note_id = payload.get("note_id")
     pinned = payload.get("pinned")
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     auth_object_dict["user_id"] = user.id
     auth = Auth(**auth_object_dict)
     if not auth.is_user_admin_for_entity(ontologyId=ontology_id):

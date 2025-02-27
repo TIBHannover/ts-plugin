@@ -20,7 +20,8 @@ from user_service.libs.utils import create_json_response
 @require_http_methods(['POST'])
 def is_entity_admin(request):
     auth_object_dict = get_headers_dict()
-    user = UserModel.objects.filter(username=get_username_from_request()).first()
+    client_ts = get_client_id_from_request()
+    user = UserModel.objects.filter(username=get_username_from_request(), client_ts=client_ts).first()
     auth_object_dict['user_id'] = user.id
     auth_controller = Auth(**auth_object_dict)    
 
@@ -36,8 +37,8 @@ def is_entity_admin(request):
 @authentication_required
 @require_http_methods(['POST'])
 def is_system_admin():    
-    user = UserModel.objects.filter(username=get_username_from_request()).first()
     client_ts = get_client_id_from_request()
+    user = UserModel.objects.filter(username=get_username_from_request(), client_ts=client_ts).first()
     
     role_model = RoleModel.objects.filter(user=user, client_ts=client_ts).first()
     is_admin = True if role_model.target_object_type == 'system' else False

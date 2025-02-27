@@ -81,7 +81,7 @@ def submit_github_issue(request):
     ontology_id = _form['ontology_id']
     username = get_username_from_request()
     issue_type = _form['issueType']
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     github_issue_db_entry = {
         "user": user,
         "created_at": _time.now(),
@@ -118,12 +118,13 @@ def submit_github_issue(request):
 @require_http_methods(['GET'])
 def get_submited_issues(request):
     request_header = get_headers_dict()
+    frontend_id = get_client_id_from_request()
     if request_header.get('auth_provider') != 'github':
         return create_json_response({'error': "Only github users can use this feature"})
 
 
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username).first()
+    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
     issuesList = user.user_github_issues.all()
     return create_json_response({'submited_issues': [issue.to_dict() for issue in issuesList]})
 
