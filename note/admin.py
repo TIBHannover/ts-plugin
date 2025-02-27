@@ -1,3 +1,5 @@
 from django.contrib import admin
+from .models import NoteModel, NoteCommentModel
 
-# Register your models here.
+admin.site.register(NoteModel)
+admin.site.register(NoteCommentModel)
