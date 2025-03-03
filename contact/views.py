@@ -6,6 +6,7 @@ from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
 from django.http import HttpResponseBadRequest, HttpResponseServerError
 from django.conf import settings
+import json
 
 
 @require_http_methods(['GET'])
@@ -16,7 +17,7 @@ def ping(request):
 @error_handler_decorator
 @require_http_methods(['POST'])
 def create(request):
-    data = request.json()
+    data = json.loads(request.body)
     issueTypes = {"1": "Question", "2": "Problem"}
 
     title = data["title"]
