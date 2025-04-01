@@ -1,3 +1,5 @@
 from django.contrib import admin
+from .models import TermSetModel, TermsModel
 
-# Register your models here.
+admin.site.register(TermSetModel)
+admin.site.register(TermsModel)

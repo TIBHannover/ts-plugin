@@ -1,4 +1,3 @@
-import user
 from user_service.libs.utils import (
     create_json_response, 
     add_to_dict_if_value_is_not_none, 
