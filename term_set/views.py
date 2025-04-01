@@ -66,6 +66,7 @@ def create(request):
             TermsModel.objects.bulk_create(terms_to_save)
 
     except IntegrityError:
+        raise
         return HttpResponseServerError("data could not be saved.")
 
     return create_json_response({"term_set": term_set.to_dict()})
