@@ -11,6 +11,6 @@ urlpatterns = [
     path("contact/", include("contact.urls")),
     path("collection/", include("collection.urls")),
     path("admin/", include("admin.urls")),
-
+    path("term_set/", include("term_set.urls")),
 ]
 

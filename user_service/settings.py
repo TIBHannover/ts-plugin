@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "collection",
     "admin.apps.AdminConfig",
     "admin_cli"
+    "term_set"
 
 ]
 
