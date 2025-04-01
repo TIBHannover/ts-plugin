@@ -44,7 +44,6 @@ class TermSetModel(models.Model):
 
 
 
-
 class TermsModel(models.Model):
     iri = models.CharField(null=False)
     term_type = models.CharField()

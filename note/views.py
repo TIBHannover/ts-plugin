@@ -194,7 +194,7 @@ def list(request):
     stats["totalPageCount"] = math.ceil(notes_total_count / size)
 
     return create_json_response({"notes": notes, "stats": stats})
-
+  
 
 @error_handler_decorator
 @client_id_validation
