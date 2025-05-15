@@ -33,6 +33,8 @@ services:
       - microservice      
     links: 
         - db
+    volumes:
+      - ./term_set:/home/ts-app/term_set
 
   nginx:
     container_name: nginx

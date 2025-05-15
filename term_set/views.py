@@ -1,4 +1,5 @@
-from user_service.libs.utils import create_json_response
+from re import L
+from user_service.libs.utils import create_json_response, is_valid_uuid
 from django.views.decorators.http import require_http_methods
 from user_service.libs.decorators import (
     authentication_required,
@@ -90,6 +91,8 @@ def get(request, id=None):
             {"term_sets": [term_set.to_dict() for term_set in term_sets]}
         )
 
+    if not is_valid_uuid(id):
+        raise Http404("Terms set does not exist")
     term_set = TermSetModel.objects.filter(id=id).first()
     if not term_set or not term_set.can_visit(user_id=user_id):
         raise Http404("Terms set does not exist")
@@ -101,6 +104,8 @@ def get(request, id=None):
 @authentication_required
 @require_http_methods(["PUT"])
 def update(request, id):
+    if not is_valid_uuid(id):
+        raise Http404("Terms set does not exist")
     payload = json.loads(request.body)
     username = get_username_from_request()
     name = payload["name"]
@@ -143,6 +148,8 @@ def update(request, id):
 @authentication_required
 @require_http_methods(["DELETE"])
 def delete(request, id):
+    if not is_valid_uuid(id):
+        raise Http404("Terms set does not exist")
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
     term_set = TermSetModel.objects.filter(id=id).first()
