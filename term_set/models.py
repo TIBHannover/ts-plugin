@@ -1,6 +1,7 @@
 from django.db import models
 import uuid
 from user.models import UserModel
+from typing import Union
 
 
 VISIBILITIES_VALUES = ["me", "internal", "public"]
@@ -39,6 +40,16 @@ class TermSetModel(models.Model):
             self.visibility = "me"
         super().save(**kwargs)
 
+    def can_visit(self, user_id: Union[int, str]) -> bool:
+        if self.visibility == "me" and self.creator.id != user_id:
+            return False
+        if self.visibility == "internal" and not user_id:
+            return False
+        return True
+
+    def can_edit(self, user_id: Union[int, str]) -> bool:
+        return self.creator.id == user_id
+
     def __str__(self) -> str:
         return f"<Term_set {self.id}>"
 
@@ -46,7 +57,9 @@ class TermSetModel(models.Model):
 class TermsModel(models.Model):
     iri = models.CharField(null=False)
     term_type = models.CharField()
-    term_set = models.ForeignKey(TermSetModel, models.CASCADE, related_name="terms")
+    term_set = models.ForeignKey(
+        TermSetModel, on_delete=models.CASCADE, related_name="terms"
+    )
     metadata = models.JSONField(null=False)
 
     class Meta:

@@ -59,10 +59,10 @@ class UserModel(models.Model):
         return user
 
     @staticmethod
-    def get_by_username(username: str, client_ts: Optional[str] = None) -> dict:
+    def get_by_username(username: str, client_ts: Optional[str] = None):
         client = get_client_id_from_request() if not client_ts else client_ts
         user = UserModel.objects.filter(username=username, client_ts=client).first()
-        return user.to_dict()
+        return user
 
     @staticmethod
     def get_by_id(user_id: Union[int, str], client_ts: Optional[str] = None) -> dict:
@@ -71,7 +71,9 @@ class UserModel(models.Model):
         return user.to_dict() if user else {}
 
     @staticmethod
-    def get_user_id_by_username(username: str, client_ts: Optional[str] = None) -> Optional[int]:
+    def get_user_id_by_username(
+        username: str, client_ts: Optional[str] = None
+    ) -> Optional[int]:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(username=username, client_ts=client).first()
         return db_user.id if db_user else False
@@ -95,9 +97,7 @@ class UserModel(models.Model):
 
     @staticmethod
     def save_user_extra(
-        username: str, 
-        user_extra: dict, 
-        client_ts: Optional[str] = None
+        username: str, user_extra: dict, client_ts: Optional[str] = None
     ) -> bool:
         client = get_client_id_from_request() if not client_ts else client_ts
         db_user = UserModel.objects.filter(username=username, client_ts=client).first()
@@ -115,10 +115,10 @@ class UserModel(models.Model):
         return []
 
 
-
-
 class UserTokenModel(models.Model):
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="user_ts_token")
+    user = models.ForeignKey(
+        UserModel, on_delete=models.CASCADE, related_name="user_ts_token"
+    )
     created_at = models.DateTimeField()
     token = models.CharField()
 
@@ -128,7 +128,6 @@ class UserTokenModel(models.Model):
     def __str__(self) -> str:
         return f"<UserToken {self.token}>"
 
-    
     def update_token(self, new_token: str) -> bool:
         user_token_record = UserTokenModel.objects.filter(id=self.id).first()
         if user_token_record:
@@ -138,7 +137,9 @@ class UserTokenModel(models.Model):
 
 
 class RoleModel(models.Model):
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="user_roles")
+    user = models.ForeignKey(
+        UserModel, on_delete=models.CASCADE, related_name="user_roles"
+    )
     created_at = models.DateTimeField()
     target_object_id = models.CharField()
     target_object_type = models.CharField()
@@ -154,9 +155,8 @@ class RoleModel(models.Model):
             "created_at": self.created_at,
             "target_object_type": self.target_object_type,
             "role": self.role,
-            "client_ts": self.client_ts
+            "client_ts": self.client_ts,
         }
-
 
     def get_system_admin_emails(self) -> list:
         admins = RoleModel.objects.filter(
@@ -167,7 +167,6 @@ class RoleModel(models.Model):
             emails.append(admin.role_holder_email)
         return emails
 
-    
     def role_is_valid(self) -> bool:
         return self.role in ALLOWED_ROLES
 
@@ -177,7 +176,9 @@ class RoleModel(models.Model):
 
 class SearchSettingModel(models.Model):
     title = models.CharField()
-    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, related_name="search_settings")
+    user = models.ForeignKey(
+        UserModel, on_delete=models.CASCADE, related_name="search_settings"
+    )
     description = models.CharField(blank=True, null=True)
     setting = models.JSONField()
     created_at = models.DateTimeField()
