@@ -5,7 +5,7 @@ import json
 import uuid
 
 
-class TestTermSetCreation(TestCase, BaseTest):
+class TestTermSet(TestCase, BaseTest):
     @classmethod
     def setUpTestData(self) -> None:
         self.creation_url = "/term_set/create/"
@@ -100,7 +100,7 @@ class TestTermSetCreation(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 404)
-        # self.assertEqual("Terms set does not exist", res.content.decode())
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
 
     def test_termset_delete_should_fail_for_non_exisitng(self):
         headers = self.github_request_headers
@@ -110,7 +110,7 @@ class TestTermSetCreation(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 404)
-        # self.assertEqual("Terms set does not exist", res.content.decode())
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
 
     def test_termset_update_should_succeed(self):
         headers = self.github_request_headers
@@ -119,7 +119,7 @@ class TestTermSetCreation(TestCase, BaseTest):
         self.term_set_in_db["created_at"] = "some date ago"
         self.term_set_in_db["creator"] = None
         res = self.client.put(
-            self.update_url,
+            self.update_url + self.term_set_in_db["id"] + "/",
             headers=headers,
             data=json.dumps(self.term_set_in_db),
             content_type="application/json",
@@ -135,17 +135,13 @@ class TestTermSetCreation(TestCase, BaseTest):
         self.term_set_in_db["created_at"] = "some date ago"
         self.term_set_in_db["creator"] = None
         res = self.client.put(
-            self.update_url,
+            self.update_url + self.term_set_in_db["id"] + "/",
             headers=headers,
             data=json.dumps(self.term_set_in_db),
             content_type="application/json",
         )
-        print(res.content.decode())
         self.assertEqual(res.status_code, 404)
-        # self.assertEqual(
-        #     "Terms set does not exist",
-        #     json.loads(res.content.decode())["_result"],
-        # )
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
 
     def test_termset_get_public_one_should_succeed_for_guest(self):
         headers = self.guest_request_headers
@@ -155,3 +151,81 @@ class TestTermSetCreation(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 200)
+        self.assertEqual("public", res.json()["_result"]["term_set"]["visibility"])
+
+    def test_termset_get_internal_one_should_succeed_for_user(self):
+        headers = self.orcid_request_headers
+        res = self.client.get(
+            self.get_url + self.term_set_in_db_internal["id"] + "/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual("internal", res.json()["_result"]["term_set"]["visibility"])
+
+    def test_termset_get_me_one_should_succeed_for_owner(self):
+        headers = self.github_request_headers
+        res = self.client.get(
+            self.get_url + self.term_set_in_db["id"] + "/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual("me", res.json()["_result"]["term_set"]["visibility"])
+
+    def test_termset_get_me_one_should_fail_for_non_owner(self):
+        headers = self.orcid_request_headers
+        res = self.client.get(
+            self.get_url + self.term_set_in_db["id"] + "/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
+
+    def test_termset_get_internal_one_should_fail_for_guest(self):
+        headers = self.guest_request_headers
+        res = self.client.get(
+            self.get_url + self.term_set_in_db_internal["id"] + "/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
+
+    def test_termset_get_list_should_only_contains_public_for_guest(self):
+        headers = self.guest_request_headers
+        res = self.client.get(
+            self.get_url,
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(1, len(res.json()["_result"]["term_sets"]))
+        self.assertEqual("public", res.json()["_result"]["term_sets"][0]["visibility"])
+
+    def test_termset_get_list_should_contains_public_and_internal_for_orcid_user(self):
+        # orcid user did not create any term set
+        headers = self.orcid_request_headers
+        res = self.client.get(
+            self.get_url,
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(2, len(res.json()["_result"]["term_sets"]))
+        for tset in res.json()["_result"]["term_sets"]:
+            assert tset["visibility"] in ["public", "internal"]
+
+    def test_termset_get_list_should_contains_all_for_github_user(self):
+        # github user has a termset.
+        headers = self.github_request_headers
+        res = self.client.get(
+            self.get_url,
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(3, len(res.json()["_result"]["term_sets"]))
+        for tset in res.json()["_result"]["term_sets"]:
+            assert tset["visibility"] in ["public", "internal", "me"]

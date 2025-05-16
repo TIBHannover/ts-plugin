@@ -9,16 +9,14 @@ from user_service.libs.decorators import (
 from .models import TermSetModel, TermsModel
 from user.models import UserModel
 import json
-from user_service.middlewares.request import (
-    get_client_id_from_request,
-    get_username_from_request,
-)
+from user_service.middlewares.request import get_username_from_request, get_headers_dict
 from datetime import datetime as _time
 from django.core.exceptions import BadRequest
 from django.http import Http404, HttpResponseServerError
 from django.db import transaction, IntegrityError
 import uuid
 from django.db.models import Q
+from user.libs.auth import Auth
 
 
 @require_http_methods(["GET"])
@@ -74,8 +72,14 @@ def create(request):
 @require_http_methods(["GET"])
 def get(request, id=None):
     username = get_username_from_request()
+    auth_object_dict = get_headers_dict()
     user = UserModel.get_by_username(username=username)
     user_id = user.id if user else None
+    auth_object_dict["user_id"] = user_id
+    auth = Auth(**auth_object_dict)
+    if auth.user_is_guest():
+        user_id = None
+
     if not id:
         # list of term sets
         term_sets = []
@@ -84,7 +88,9 @@ def get(request, id=None):
             term_sets = TermSetModel.objects.filter(visibility="public").all()
         else:
             term_sets = TermSetModel.objects.filter(
-                Q(visibility="internal") | (Q(visibility="me") & Q(creator=user))
+                Q(visibility="internal")
+                | Q(visibility="public")
+                | (Q(visibility="me") & Q(creator=user))
             )
 
         return create_json_response(
