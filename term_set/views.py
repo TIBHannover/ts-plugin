@@ -17,6 +17,7 @@ from django.db import transaction, IntegrityError
 import uuid
 from django.db.models import Q
 from user.libs.auth import Auth
+from urllib.parse import unquote
 
 
 @require_http_methods(["GET"])
@@ -164,3 +165,54 @@ def delete(request, id):
 
     term_set.delete()
     return create_json_response({"deleted": True})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["PUT"])
+def add_term(request, setId):
+    if not is_valid_uuid(setId):
+        raise Http404("Terms set does not exist")
+    username = get_username_from_request()
+    payload = json.loads(request.body)
+    term = payload.get("term", None)
+    if not term:
+        raise BadRequest("term is missing")
+
+    term_set = TermSetModel.objects.filter(id=setId).first()
+    user = UserModel.get_by_username(username=username)
+    if not term_set or not term_set.can_edit(user_id=user.id):
+        raise Http404("Terms set does not exist")
+
+    term_model = TermsModel()
+    term_model.iri = term["iri"]
+    term_model.term_type = (
+        term["type"][0] if isinstance(term["type"], list) else term["type"]
+    )
+    term_model.metadata = term
+    term_model.term_set = term_set
+    term_model.save()
+    return create_json_response({"added": True})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["DELETE"])
+def remove_term(request, setId):
+    if not is_valid_uuid(setId):
+        raise Http404("Terms set does not exist")
+    username = get_username_from_request()
+    termId = request.GET.get("termId", None)
+    if not termId:
+        raise BadRequest("term id is missing")
+
+    term_set = TermSetModel.objects.filter(id=setId).first()
+    user = UserModel.get_by_username(username=username)
+    if not term_set or not term_set.can_edit(user_id=user.id):
+        raise Http404("Terms set does not exist")
+
+    term_model = TermsModel.objects.filter(iri=termId, term_set=term_set).first()
+    if not term_model:
+        raise Http404("Term does not exist")
+    term_model.delete()
+    return create_json_response({"removed": True})

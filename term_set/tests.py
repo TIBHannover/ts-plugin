@@ -3,6 +3,7 @@ from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import json
 import uuid
+import urllib.parse
 
 
 class TestTermSet(TestCase, BaseTest):
@@ -11,6 +12,7 @@ class TestTermSet(TestCase, BaseTest):
         self.creation_url = "/term_set/create/"
         self.delete_url = "/term_set/delete/"
         self.update_url = "/term_set/update/"
+        self.base_url = "/term_set/"
         self.get_url = "/term_set/get/"
         self.orcidUser, _ = TestHelper.createOrcidUser()
         self.gitHubUser, _ = TestHelper.createGitHubUser()
@@ -229,3 +231,53 @@ class TestTermSet(TestCase, BaseTest):
         self.assertEqual(3, len(res.json()["_result"]["term_sets"]))
         for tset in res.json()["_result"]["term_sets"]:
             assert tset["visibility"] in ["public", "internal", "me"]
+
+    def test_add_term_to_set_should_succeed(self):
+        headers = self.github_request_headers
+        res = self.client.put(
+            self.base_url + self.term_set_in_db["id"] + "/add_term/",
+            headers=headers,
+            data=json.dumps({"term": self.term3}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(True, res.json()["_result"]["added"])
+
+    def test_add_term_to_set_should_fail_for_non_owner(self):
+        headers = self.orcid_request_headers
+        res = self.client.put(
+            self.base_url + self.term_set_in_db["id"] + "/add_term/",
+            headers=headers,
+            data=json.dumps({"term": self.term3}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
+
+    def test_remove_term_to_set_should_succeed(self):
+        headers = self.github_request_headers
+        res = self.client.delete(
+            self.base_url
+            + self.term_set_in_db["id"]
+            + "/remove_term/"
+            + "?termId="
+            + self.term2["iri"],
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(True, res.json()["_result"]["removed"])
+
+    def test_remove_term_to_set_should_fail_for_non_owner(self):
+        headers = self.orcid_request_headers
+        res = self.client.delete(
+            self.base_url
+            + self.term_set_in_db["id"]
+            + "/remove_term/"
+            + "?termId="
+            + self.term2["iri"],
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual("Terms set does not exist", res.json()["_result"])
