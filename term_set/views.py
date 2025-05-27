@@ -17,7 +17,6 @@ from django.db import transaction, IntegrityError
 import uuid
 from django.db.models import Q
 from user.libs.auth import Auth
-from urllib.parse import unquote
 
 
 @require_http_methods(["GET"])
@@ -36,6 +35,9 @@ def create(request):
     visibility = payload.get("visibility", "me")
     terms_json_list = payload.get("terms", [])
     user = UserModel.get_by_username(username=username)
+
+    if name == "":
+        raise BadRequest("termset name cannot be empty")
 
     try:
         with transaction.atomic():
@@ -123,6 +125,9 @@ def update(request, id):
     term_set = TermSetModel.objects.filter(id=id).first()
     if not term_set or not term_set.can_edit(user_id=user.id):
         raise Http404("Terms set does not exist")
+
+    if name == "":
+        raise BadRequest("Term set name cannot be empty")
 
     try:
         with transaction.atomic():
