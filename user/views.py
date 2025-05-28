@@ -1,11 +1,18 @@
-from user_service.libs.decorators import error_handler_decorator, authentication_required
+from user_service.libs.decorators import (
+    error_handler_decorator,
+    authentication_required,
+)
 from user_service.libs.utils import create_json_response
 from django.views.decorators.http import require_http_methods
-from user_service.middlewares.request import get_headers_dict, get_username_from_request, get_client_id_from_request
+from user_service.middlewares.request import (
+    get_headers_dict,
+    get_username_from_request,
+    get_client_id_from_request,
+)
 from user.libs.auth import Auth
 from datetime import datetime as _time
 from user.models import UserModel, RoleModel, SearchSettingModel
-from django.http import Http404 
+from django.http import Http404
 from django.views import View
 import json
 
@@ -45,11 +52,11 @@ def login(request):
         user_token = auth.get_or_register_user_token_if_not_exist()
         auth_response_dict["ts_user_token"] = user_token
         role_model = RoleModel(user=user, client_ts=auth_object_dict["client_ts_id"])
-        auth_response_dict["system_admin"] = role_model.target_object_type == 'system'
+        auth_response_dict["system_admin"] = role_model.target_object_type == "system"
         auth_response_dict["settings"] = user.user_extra
+        auth_response_dict["id"] = auth.user_id
         return create_json_response(auth_response_dict)
     return create_json_response({"issue": "auth is rejected"})
-
 
 
 @error_handler_decorator
@@ -64,7 +71,6 @@ def validate_login(request):
     return create_json_response({"valid": True})
 
 
-
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
@@ -75,10 +81,7 @@ def save_settings(request):
     return create_json_response({"saved": setting_is_saved})
 
 
-
-
 class SearchSettings(View):
-
     @error_handler_decorator
     @authentication_required
     def get(self, request, id=None):
@@ -93,9 +96,9 @@ class SearchSettings(View):
             raise Http404("Setting not found")
 
         settings = user.search_settings.all()
-        return create_json_response({"settings": [setting.to_dict() for setting in settings]})
-
-
+        return create_json_response(
+            {"settings": [setting.to_dict() for setting in settings]}
+        )
 
     @error_handler_decorator
     @authentication_required
@@ -103,7 +106,9 @@ class SearchSettings(View):
         username = get_username_from_request()
         client_ts_id = get_client_id_from_request()
         payload = json.loads(request.body)
-        user = UserModel.objects.filter(username=username, client_ts=client_ts_id).first()
+        user = UserModel.objects.filter(
+            username=username, client_ts=client_ts_id
+        ).first()
         search_setting_model = SearchSettingModel(
             user=user,
             title=payload["title"],
@@ -113,8 +118,6 @@ class SearchSettings(View):
         )
         search_setting_model.save()
         return create_json_response({"saved": search_setting_model.to_dict()})
-
-
 
     @error_handler_decorator
     @authentication_required
@@ -127,7 +130,6 @@ class SearchSettings(View):
             return create_json_response({"deleted": True})
 
         raise Http404("Setting not found")
-
 
     @error_handler_decorator
     @authentication_required
@@ -148,6 +150,3 @@ class SearchSettings(View):
             setting_model.update(id=id)
             return create_json_response({"updated": setting_model.to_dict()})
         raise Http404("Setting not found")
-
-
-  

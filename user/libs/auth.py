@@ -12,6 +12,8 @@ from typing import Optional, Union
 from user_service.interfaces.i_editable_model_obj import IEditableModelObj
 from django.core.exceptions import PermissionDenied, BadRequest
 from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
 
 
 class Auth:
@@ -36,18 +38,20 @@ class Auth:
         self.user_id = user_id
         self.user_token = user_token
 
-
     def authenticate(self) -> Union[dict, bool]:
         if self.auth_provider == "github":
-            return GithubLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
+            return GithubLib.authenticate(
+                code=self.code, client_ts_id=self.client_ts_id
+            )
         elif self.auth_provider == "orcid":
             return OrcidLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "native":
             return AaiLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
         elif self.auth_provider == "gitlab":
-            return GitLabLib.authenticate(code=self.code, client_ts_id=self.client_ts_id)
+            return GitLabLib.authenticate(
+                code=self.code, client_ts_id=self.client_ts_id
+            )
         return False
-
 
     def abort_if_not_authenticated(self) -> None:
         login_validity = False
@@ -59,7 +63,9 @@ class Auth:
         if self.auth_provider == "github":
             login_validity = GithubLib.login_valid(user_auth_token=self.access_token)
         elif self.auth_provider == "orcid":
-            login_validity = OrcidLib.login_valid(user_auth_token=self.access_token, orcid_id=self.orcid_id)
+            login_validity = OrcidLib.login_valid(
+                user_auth_token=self.access_token, orcid_id=self.orcid_id
+            )
         elif self.auth_provider == "native":
             login_validity = AaiLib.is_login_valid(user_auth_token=self.access_token)
         elif self.auth_provider == "gitlab":
@@ -68,7 +74,6 @@ class Auth:
         if not login_validity:
             raise PermissionDenied("Not Authorized")
 
-
     def user_is_guest(self) -> Optional[bool]:
         try:
             login_validity = False
@@ -76,13 +81,21 @@ class Auth:
             self.abort_if_user_does_not_exist()
             self.abort_if_user_token_is_not_valid()
             if self.auth_provider == "github":
-                login_validity = GithubLib.login_valid(user_auth_token=self.access_token)
+                login_validity = GithubLib.login_valid(
+                    user_auth_token=self.access_token
+                )
             elif self.auth_provider == "orcid":
-                login_validity = OrcidLib.login_valid(user_auth_token=self.access_token, orcid_id=self.orcid_id)
+                login_validity = OrcidLib.login_valid(
+                    user_auth_token=self.access_token, orcid_id=self.orcid_id
+                )
             elif self.auth_provider == "native":
-                login_validity = AaiLib.is_login_valid(user_auth_token=self.access_token)
+                login_validity = AaiLib.is_login_valid(
+                    user_auth_token=self.access_token
+                )
             elif self.auth_provider == "gitlab":
-                login_validity = GitLabLib.login_valid(user_auth_token=self.access_token)
+                login_validity = GitLabLib.login_valid(
+                    user_auth_token=self.access_token
+                )
 
             if not login_validity:
                 raise PermissionDenied("Not Authorized")
@@ -92,28 +105,35 @@ class Auth:
             # raise
             return True
 
-
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
-        if not self.client_ts_id or self.client_ts_id not in getattr(settings, "CLIENT_TERMINOLOGY_SERVICES", []):
-            raise PermissionDenied("Client application is not allowed to use this service.")
+        if not self.client_ts_id or self.client_ts_id not in getattr(
+            settings, "CLIENT_TERMINOLOGY_SERVICES", []
+        ):
+            raise PermissionDenied(
+                "Client application is not allowed to use this service."
+            )
 
-        if not self.client_ts_token or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN:
-            raise PermissionDenied("Client application is not allowed to use this service.")
+        if (
+            not self.client_ts_token
+            or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
+        ):
+            raise PermissionDenied(
+                "Client application is not allowed to use this service."
+            )
 
         return True
-
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
-        if not self.auth_provider or self.auth_provider not in getattr(settings, "AUTH_PROVIDERS", []):
+        if not self.auth_provider or self.auth_provider not in getattr(
+            settings, "AUTH_PROVIDERS", []
+        ):
             raise PermissionDenied("auth provider is not clear")
         return True
-
 
     def abort_if_user_does_not_exist(self) -> Optional[bool]:
         if not self.user_id:
             raise PermissionDenied("Not Authorized user")
         return True
-
 
     def abort_if_user_is_blocked(self) -> None:
         if not self.user_id:
@@ -122,33 +142,48 @@ class Auth:
         if user["is_blocked"]:
             raise PermissionDenied("Not Authorized user")
 
-
     def get_or_register_user_token_if_not_exist(self) -> str:
         user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
-        if self.user_id and user_token:
+        created_at = (
+            timezone.make_aware(user_token.created_at)
+            if timezone.is_naive(user_token.created_at)
+            else user_token.created_at
+        )
+        token_is_old = created_at < timezone.now() - timedelta(weeks=1)
+        if self.user_id and user_token and not token_is_old:
             return user_token.token
 
         token = secrets.token_urlsafe(32)
+        if token_is_old and user_token:
+            user_token.delete()
+
         user = UserModel.objects.get(id=self.user_id)
         new_token = UserTokenModel()
         new_token.user = user
         new_token.created_at = _time.now()
-        new_token.token = token 
+        new_token.token = token
         new_token.save()
         return token
-
 
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
         if not self.user_token:
             raise PermissionDenied("Not Authorized user token")
 
         user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
-        if not user_token or user_token.token != self.user_token:
+        created_at = (
+            timezone.make_aware(user_token.created_at)
+            if timezone.is_naive(user_token.created_at)
+            else user_token.created_at
+        )
+        token_is_old = created_at < timezone.now() - timedelta(weeks=1)
+        if not user_token or user_token.token != self.user_token or token_is_old:
             raise PermissionDenied("Not Authorized user token")
 
         return True
 
-    def is_user_admin_for_entity(self, ontologyId: str, collectionId: Optional[str] = None) -> bool:
+    def is_user_admin_for_entity(
+        self, ontologyId: str, collectionId: Optional[str] = None
+    ) -> bool:
         system_admin = RoleModel.objects.filter(
             user__id=self.user_id,
             target_object_id="system",
@@ -194,12 +229,11 @@ class Auth:
 
         return False
 
-
     def user_can_edit_object(
         self,
         objectModel: IEditableModelObj,
         object_id: Union[int, str],
-        role_target_object_id: str = ""
+        role_target_object_id: str = "",
     ) -> bool:
         if not self.user_id:
             return False
@@ -207,7 +241,10 @@ class Auth:
             return True
 
         visibility = objectModel.get_visibility(object_id)
-        if self.is_user_admin_for_entity(ontologyId=role_target_object_id) and visibility != "me":
+        if (
+            self.is_user_admin_for_entity(ontologyId=role_target_object_id)
+            and visibility != "me"
+        ):
             return True
 
         return False
