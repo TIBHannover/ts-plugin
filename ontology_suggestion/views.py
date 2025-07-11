@@ -11,7 +11,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from user_service.middlewares.request import get_client_id_from_request
-from django.http import HttpResponseServerError, response
+from django.http import HttpResponseServerError
 from .libs.actions import collectionSuggestionParams, ontologySuggestionParams
 
 
