@@ -11,7 +11,7 @@ import json
 from django.conf import settings
 from django.core.exceptions import BadRequest
 from user_service.middlewares.request import get_client_id_from_request
-from django.http import HttpResponseServerError
+from django.http import HttpResponseServerError, response
 from .libs.actions import collectionSuggestionParams, ontologySuggestionParams
 
 
@@ -118,3 +118,39 @@ def suggestion_exist(request):
             return create_json_response({"exist": False})
         return create_json_response({"exist": True})
     return HttpResponseServerError("something went wrong")
+
+
+@error_handler_decorator
+@require_http_methods(["GET"])
+def check_onto_purl_is_valid(request):
+    data = request.GET
+    purl = data["purl"]
+    try:
+        response = requests.get(purl)
+    except:
+        return create_json_response(
+            {"valid": False, "reason": "PURL is not a resolvable URL"}
+        )
+
+    if response.status_code != 200:
+        return create_json_response(
+            {"valid": False, "reason": "PURL is not a resolvable URL"}
+        )
+    content_type = response.headers.get("Content-Type")
+    print("conten-type: " + content_type, flush=True)
+    allowed_types = [
+        "text/turtle",
+        "application/x-turtle",
+        "application/rdf+xml",
+        "text/xml",
+        "text/plain",
+        "application/owl+xml",
+    ]
+    if not any(ctype in content_type for ctype in allowed_types):
+        return create_json_response(
+            {
+                "valid": False,
+                "reason": "PURL is not returning an ontology file (owl or ttl)",
+            }
+        )
+    return create_json_response({"valid": True})
