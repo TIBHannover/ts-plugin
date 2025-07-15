@@ -89,8 +89,8 @@ def testshape(request):
     args = request.GET
     ontoPurl = args.get("purl")
     validation = test_onto_shap(ontoPurl)
-    if not validation:
-        raise BadRequest("Validation process aborted")
+    if validation["shape_test_failed"]:
+        validation["error"] = [{"text": "shape test failed", "about": ""}]
     return create_json_response({"response": validation})
 
 

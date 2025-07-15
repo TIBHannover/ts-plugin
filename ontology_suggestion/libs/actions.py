@@ -55,39 +55,41 @@ def ontologySuggestionParams(
         if len(response) > 0:
             raise BadRequest("suggestion exists.")
 
-    validation = test_onto_shape(ontoPurl)
-    if not validation:
-        raise BadRequest("Validation process aborted")
-
-    missing_fileds = {}
-    if len(validation["error"]) > 0:
-        for error in validation["error"]:
-            # if not data.get(error['about']):
-            #  abort(400, 'Please provide {}'.format(error['about']))
-            missing_fileds[error["about"]] = requestBody.get(error["about"])
-
     issue_content = "from: {} ({})\n\n".format(username, email)
     issue_content += "Ontology Name: {}\n\nPURL: {}\n\nReason: {}\n\n".format(
         ontoName, ontoPurl, reason
     )
     issue_content += "Collection ID: <b>{}</b>\n\n".format(collection_ids)
-    issue_content += "<h4><b>Missing Fields</b></h4> These fields are missing from the ontology based on the SHACL test, and instead, user was asked to provide them.\n\n"
-    issue_content += "\n\n"
-    for key, val in missing_fileds.items():
-        issue_content += "{}: {}\n\n".format(key, val)
-
-    issue_content += "\n<h4><b>Full list of validation errors</b></h4>\n\n"
-    for err in validation["error"]:
-        issue_content += "{}\n\n".format(err["text"])
-
-    issue_content += "\n<h4><b>Validation Warnings</b></h4> These warnings are also found during the SHACL test.\n\n"
-    for info in validation["info"]:
-        issue_content += "{}\n\n".format(info)
-
     title = "Ontology Suggestion: {}".format(ontoPurl)
     label = "ontology_suggestion"
     for collection in collection_ids.split(","):
         label += ",{}".format(collection)
+
+    validation = test_onto_shape(ontoPurl)
+    if validation["shape_test_failed"]:
+        issue_content += "\n<h4><b>Shape Test Failed</b></h4>\n\n"
+        issue_content += "\n\n"
+        issue_content += "Reason: {}\n\n".format(validation["error"][0]["text"])
+
+    else:
+        missing_fileds = {}
+        if len(validation["error"]) > 0:
+            for error in validation["error"]:
+                # if not data.get(error['about']):
+                #  abort(400, 'Please provide {}'.format(error['about']))
+                missing_fileds[error["about"]] = requestBody.get(error["about"])
+                issue_content += "<h4><b>Missing Fields</b></h4> These fields are missing from the ontology based on the SHACL test, and instead, user was asked to provide them.\n\n"
+                issue_content += "\n\n"
+                for key, val in missing_fileds.items():
+                    issue_content += "{}: {}\n\n".format(key, val)
+
+                issue_content += "\n<h4><b>Full list of validation errors</b></h4>\n\n"
+                for err in validation["error"]:
+                    issue_content += "{}\n\n".format(err["text"])
+
+                issue_content += "\n<h4><b>Validation Warnings</b></h4> These warnings are also found during the SHACL test.\n\n"
+                for info in validation["info"]:
+                    issue_content += "{}\n\n".format(info)
 
     return {
         "title": title,

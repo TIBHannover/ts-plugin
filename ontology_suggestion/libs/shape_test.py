@@ -1,3 +1,4 @@
+import json
 import requests
 from typing import TypedDict, Union, List
 from django.conf import settings
@@ -11,12 +12,13 @@ class ShapeErrorObject(TypedDict):
 class ValidationResult(TypedDict):
     error: List[ShapeErrorObject]
     info: List[str]
+    shape_test_failed: bool
 
 
 def test(ontology_purl: str) -> Union[ValidationResult, bool]:
     try:
         tesetUrl = "https://www.itb.ec.europa.eu/shacl/shacl/api/validate"
-        headers = {"Content-Type": "application/json", "Accept": "text/turtle"}
+        headers = {"Content-Type": "application/json"}
         contentType = (
             "application/rdf+xml" if ".ttl" not in ontology_purl else "text/turtle"
         )
@@ -41,14 +43,19 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
         }
         response = requests.post(tesetUrl, json=data, headers=headers)
         if response.status_code != 200:
-            return False
+            try:
+                res_content = response.json()
+            except json.decoder.JSONDecodeError:
+                res_content = {"message": "unknown error"}
+            return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[], shape_test_failed=True)
 
         response_data = response.json()
         response_data = response_data.get("@graph", None)
         if response_data is None:
-            return False
+            res_content = {"message": "unknown error"}
+            return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[], shape_test_failed=True)
 
-        result = {"error": [], "info": []}
+        result = {"error": [], "info": [], "shape_test_failed": False}
         for report_item in response_data:
             level = report_item.get("sh:resultSeverity", {})
             if level.get("@id", "") == "sh:Warning":
@@ -65,7 +72,9 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
 
     except:
         # raise
-        return False
+        res_content = {"message": "unknown error"}
+        return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[],
+                            shape_test_failed=True)
 
 
 def getErrorTargetFromMessage(errorMesaage: str) -> str:

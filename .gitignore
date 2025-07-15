@@ -4,5 +4,6 @@ pyrightconfig.json
 __pycache__
 devnote
 .db.env
+.idea
 
 
