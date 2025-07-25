@@ -144,19 +144,18 @@ class Auth:
 
     def get_or_register_user_token_if_not_exist(self) -> str:
         user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
-        created_at = (
-            timezone.make_aware(user_token.created_at)
-            if timezone.is_naive(user_token.created_at)
-            else user_token.created_at
-        )
-        token_is_old = created_at < timezone.now() - timedelta(weeks=1)
-        if self.user_id and user_token and not token_is_old:
-            return user_token.token
-
-        token = secrets.token_urlsafe(32)
-        if token_is_old and user_token:
+        if self.user_id and user_token:
+            created_at = (
+                timezone.make_aware(user_token.created_at)
+                if timezone.is_naive(user_token.created_at)
+                else user_token.created_at
+            )
+            token_is_old = created_at < timezone.now() - timedelta(weeks=1)
+            if not token_is_old:
+                return user_token.token
             user_token.delete()
 
+        token = secrets.token_urlsafe(32)
         user = UserModel.objects.get(id=self.user_id)
         new_token = UserTokenModel()
         new_token.user = user
