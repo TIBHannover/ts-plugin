@@ -123,7 +123,7 @@ def update(request):
 @error_handler_decorator
 @client_id_validation
 @require_http_methods(['GET'])
-def list(request):
+def note_list(request):
     args = request.GET
     ontology_id = args.get("ontology")
     target_iri = args.get("artifact_iri")
