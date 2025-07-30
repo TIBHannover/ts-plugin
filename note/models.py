@@ -1,7 +1,10 @@
 from django.db import models
+from sqlparse.utils import offset
+
 from user.models import UserModel
 from typing import Union
-
+from report.models import ReportModel
+from user.libs.auth import Auth
 
 CLIENT_TS = ["general", "nfdi4chem", "nfdi4ing"]
 VISIBILITIES_VALUES = ["me", "internal", "public"]
@@ -56,31 +59,28 @@ class NoteModel(models.Model):
         else:
             return
 
-
     def delete(self, **kwargs):
         self.active = False
         self.save()
-    
 
-    def update_record(self, updates:dict) -> Union[bool, object]:
+    def update_record(self, updates: dict) -> Union[bool, object]:
         if not self:
             return False
         for column, new_value in updates.items():
             setattr(self, column, new_value)
-        
+
         self.save()
         return self
-
 
     @staticmethod
     def get_notes_by_conditions(conditions: dict) -> dict:
         base_condition_set = _Q(active=True) & _Q(client_ts=conditions["client_ts"])
+        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(pinned=conditions["pinned"])
+        parent_ontology_condition_set = _Q(parent_ontology_id=conditions["ontology_id"])
+        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(creator_id=conditions["user_id"])
 
         if conditions.get("semantic_component_type"):
             base_condition_set &= _Q(semantic_component_type=conditions["semantic_component_type"])
-
-        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(pinned=conditions["pinned"])
-        parent_ontology_condition_set = _Q(parent_ontology_id=conditions["ontology_id"])
 
         if conditions.get("semantic_component_iri"):
             base_condition_set &= _Q(semantic_component_iri=conditions["semantic_component_iri"])
@@ -89,38 +89,39 @@ class NoteModel(models.Model):
         if conditions.get("get_notes_from_children"):
             ontology_condition_set = _Q(parent_ontology_condition_set) | ontology_condition_set
 
-        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(creator_id=conditions["user_id"])
-
         count_of_all_notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
         ).count()
         if count_of_all_notes == 0:
             return {"notes": [], "count_of_all_notes": 0}
 
-        notes = []
-        if conditions.get("offset") and conditions.get("limit"):
-            start = conditions.get("offset", 0)
-            end = conditions.get("limit", 10) + start
-            notes = NoteModel.objects.filter(
-                _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
-            ).order_by("created_at")[start : end + 1]
-        else:
-            notes = NoteModel.objects.filter(
-                _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
-            ).order_by("created_at")
+        start = conditions.get("offset", 0)
+        end = conditions.get("limit", 10) + start
+        notes = NoteModel.objects.filter(
+            _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
+        ).order_by("created_at")[start: end]
 
         if not notes:
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
         result = []
+        auth = Auth()
         for note in notes:
             comment_count = note.note_comments.filter(active=True).count()
             note_dict = note.to_dict()
             note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
             note_dict["comments_count"] = comment_count
+            note_report = ReportModel.objects.filter(reported_object_type="note",
+                                                     reported_object_id=note_dict["id"]).first()
+            note_dict["can_edit"] = auth.user_can_edit_object(
+                objectModel=NoteModel,
+                object_id=note_dict["id"],
+                role_target_object_id=note_dict["ontology_id"],
+            )
+            note_dict["is_reported"] = True if note_report else False
+
             result.append(note_dict)
 
         return {"notes": result, "count_of_all_notes": count_of_all_notes}
-
 
     @staticmethod
     def user_can_edit(note_id: Union[int, str], user_id: Union[int, str]) -> bool:
@@ -133,8 +134,7 @@ class NoteModel(models.Model):
             return False
         return True
 
-
-    def can_visit(self, user_id:Union[int, str], client_ts:str, is_guest: bool):
+    def can_visit(self, user_id: Union[int, str], client_ts: str, is_guest: bool):
         visibilities = ['public'] if is_guest else ['public', 'internal']
         if self.client_ts != client_ts:
             return False
@@ -144,7 +144,6 @@ class NoteModel(models.Model):
 
         return True
 
-
     @staticmethod
     def get_visibility(note_id: Union[int, str]) -> bool:
         note = NoteModel.objects.filter(id=note_id, active=True).first()
@@ -152,15 +151,13 @@ class NoteModel(models.Model):
             return note.visibility
         return False
 
-
     def __str__(self) -> str:
         return f"<NoteModel {self.title}>"
 
 
-
 class NoteCommentModel(models.Model):
     creator = models.ForeignKey(UserModel, models.DO_NOTHING, related_name="user_comments")
-    created_at = models.DateTimeField()  
+    created_at = models.DateTimeField()
     updated_at = models.DateTimeField(blank=True, null=True)
     content = models.CharField()
     note = models.ForeignKey(NoteModel, models.DO_NOTHING, related_name="note_comments")
@@ -169,11 +166,9 @@ class NoteCommentModel(models.Model):
     class Meta:
         db_table = "note_comments"
 
-    
     def delete(self, **kwargs):
         self.active = False
         self.save()
-
 
     def to_dict(self) -> dict:
         return {
@@ -192,7 +187,6 @@ class NoteCommentModel(models.Model):
         self.save()
         return self
 
-
     @staticmethod
     def user_can_edit(comment_id: Union[int, str], user_id: Union[int, str]) -> bool:
         comment = NoteCommentModel.objects.filter(id=comment_id).first()
@@ -205,14 +199,12 @@ class NoteCommentModel(models.Model):
 
         return True
 
-
     @staticmethod
     def get_visibility(comment_id: Union[int, str]) -> bool:
         comment = NoteCommentModel.objects.filter(id=comment_id, active=True).first()
         if comment:
             return comment.note.visibility
         return False
-
 
     def __str__(self) -> str:
         return f"<NoteCommentModel {self.id}>"

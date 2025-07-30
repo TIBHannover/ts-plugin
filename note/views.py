@@ -1,6 +1,6 @@
 from user_service.libs.utils import (
-    create_json_response, 
-    add_to_dict_if_value_is_not_none, 
+    create_json_response,
+    add_to_dict_if_value_is_not_none,
     get_int_from_string
 )
 from user.models import UserModel
@@ -21,12 +21,12 @@ from django.core.exceptions import PermissionDenied
 from django.conf import settings
 import json
 
-
 DEFAULT_NOTE_LIST_SIZE = 10
 DEFAULT_NOTE_LIST_PAGE = 1
 
-
 require_http_methods(['GET'])
+
+
 def ping(request):
     return create_json_response({"response": "Pong"})
 
@@ -88,7 +88,7 @@ def update(request):
     parent_ontology = payload.get("parentOntology")
 
     if visibility.lower() not in ["me", "internal", "public"]:
-        visibility = "me"  
+        visibility = "me"
 
     updates = {}
     updates["updated_at"] = _time.now()
@@ -140,8 +140,7 @@ def note_list(request):
 
     auth_object_dict = get_headers_dict()
     user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
-    auth_object_dict["user_id"] = user_id
-    auth = Auth(**auth_object_dict)
+    auth = Auth()
 
     visibilities = ["public"]
 
@@ -158,7 +157,7 @@ def note_list(request):
     note_list_conditions["user_id"] = user_id
     note_list_conditions["get_notes_from_children"] = False
     note_list_conditions["pinned"] = True
-    
+
     pinned_notes = []
     if not target_iri:
         # For the general note list, we need pinned ones. For iri-specific notes, pinned are not needed.
@@ -176,15 +175,6 @@ def note_list(request):
     notes = notes_and_stats["notes"]
 
     notes = pinned_notes + notes
-    for note in notes:
-        note_report = ReportModel.objects.filter(reported_object_type="note", reported_object_id=note["id"]).first()
-        note["can_edit"] = auth.user_can_edit_object(
-            objectModel=NoteModel,
-            object_id=note["id"],
-            role_target_object_id=ontology_id,
-        )
-        note["is_reported"] = True if note_report else False
-
     notes_total_count = notes_and_stats["count_of_all_notes"]
     stats = {}
     stats["number_of_pinned"] = len(pinned_notes)
@@ -194,7 +184,7 @@ def note_list(request):
     stats["totalPageCount"] = math.ceil(notes_total_count / size)
 
     return create_json_response({"notes": notes, "stats": stats})
-  
+
 
 @error_handler_decorator
 @client_id_validation
@@ -207,7 +197,7 @@ def get(request, note_id):
     user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
     auth_object_dict["user_id"] = user_id
     _auth = Auth(**auth_object_dict)
-    client_id = get_client_id_from_request() 
+    client_id = get_client_id_from_request()
     try:
         _auth.abort_if_user_token_is_not_valid()
     except:
@@ -226,7 +216,6 @@ def get(request, note_id):
     if not note.can_visit(user_id=user_id, client_ts=client_id, is_guest=_auth.user_is_guest()):
         raise Http404("Note does not exist")
 
-    
     note_report_count = ReportModel.objects.filter(
         reported_object_type="note", reported_object_id=note.id
     ).count()
@@ -358,7 +347,6 @@ def delete(request):
         raise Http404("Object not found")
     object.delete()
     return create_json_response({"deleted": not object.active})
-    
 
 
 @error_handler_decorator

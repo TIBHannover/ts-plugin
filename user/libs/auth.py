@@ -14,29 +14,35 @@ from django.core.exceptions import PermissionDenied, BadRequest
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+from user_service.middlewares.request import get_headers_dict
 
 
 class Auth:
     def __init__(
-        self,
-        code: Optional[str] = None,
-        access_token: Optional[str] = None,
-        auth_provider: Optional[str] = None,
-        orcid_id: Optional[str] = None,
-        client_ts_id: Optional[str] = None,
-        client_ts_token: Optional[str] = None,
-        user_id: Union[int, str, None] = None,
-        user_token: Optional[str] = None,
-        username: Optional[str] = None,
+            self,
+            code: Optional[str] = None,
+            access_token: Optional[str] = None,
+            auth_provider: Optional[str] = None,
+            orcid_id: Optional[str] = None,
+            client_ts_id: Optional[str] = None,
+            client_ts_token: Optional[str] = None,
+            user_id: Union[int, str, None] = None,
+            user_token: Optional[str] = None,
+            username: Optional[str] = None,
     ) -> None:
-        self.code = code
-        self.access_token = access_token
-        self.auth_provider = auth_provider
-        self.orcid_id = orcid_id
-        self.client_ts_id = client_ts_id
-        self.client_ts_token = client_ts_token
-        self.user_id = user_id
-        self.user_token = user_token
+        auth_object_dict = get_headers_dict()
+        self.code = code or auth_object_dict["code"]
+        self.access_token = access_token or auth_object_dict["access_token"]
+        self.auth_provider = auth_provider or auth_object_dict["auth_provider"]
+        self.orcid_id = orcid_id or auth_object_dict["orcid_id"]
+        self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
+        self.client_ts_token = client_ts_token or auth_object_dict["client_ts_token"]
+        if not user_id:
+            userId = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+            self.user_id = userId
+        else:
+            self.user_id = user_id
+        self.user_token = user_token or auth_object_dict["user_token"]
 
     def authenticate(self) -> Union[dict, bool]:
         if self.auth_provider == "github":
@@ -107,15 +113,15 @@ class Auth:
 
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
         if not self.client_ts_id or self.client_ts_id not in getattr(
-            settings, "CLIENT_TERMINOLOGY_SERVICES", []
+                settings, "CLIENT_TERMINOLOGY_SERVICES", []
         ):
             raise PermissionDenied(
                 "Client application is not allowed to use this service."
             )
 
         if (
-            not self.client_ts_token
-            or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
+                not self.client_ts_token
+                or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
         ):
             raise PermissionDenied(
                 "Client application is not allowed to use this service."
@@ -125,7 +131,7 @@ class Auth:
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
         if not self.auth_provider or self.auth_provider not in getattr(
-            settings, "AUTH_PROVIDERS", []
+                settings, "AUTH_PROVIDERS", []
         ):
             raise PermissionDenied("auth provider is not clear")
         return True
@@ -181,7 +187,7 @@ class Auth:
         return True
 
     def is_user_admin_for_entity(
-        self, ontologyId: str, collectionId: Optional[str] = None
+            self, ontologyId: str, collectionId: Optional[str] = None
     ) -> bool:
         system_admin = RoleModel.objects.filter(
             user__id=self.user_id,
@@ -229,10 +235,10 @@ class Auth:
         return False
 
     def user_can_edit_object(
-        self,
-        objectModel: IEditableModelObj,
-        object_id: Union[int, str],
-        role_target_object_id: str = "",
+            self,
+            objectModel: IEditableModelObj,
+            object_id: Union[int, str],
+            role_target_object_id: str = "",
     ) -> bool:
         if not self.user_id:
             return False
@@ -241,8 +247,8 @@ class Auth:
 
         visibility = objectModel.get_visibility(object_id)
         if (
-            self.is_user_admin_for_entity(ontologyId=role_target_object_id)
-            and visibility != "me"
+                self.is_user_admin_for_entity(ontologyId=role_target_object_id)
+                and visibility != "me"
         ):
             return True
 
