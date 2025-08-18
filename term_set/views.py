@@ -1,4 +1,3 @@
-from re import L
 from user_service.libs.utils import create_json_response, is_valid_uuid
 from django.views.decorators.http import require_http_methods
 from user_service.libs.decorators import (
