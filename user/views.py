@@ -10,11 +10,13 @@ from user_service.middlewares.request import (
     get_client_id_from_request,
 )
 from user.libs.auth import Auth
-from datetime import datetime as _time
 from user.models import UserModel, RoleModel, SearchSettingModel
 from django.http import Http404
 from django.views import View
 import json
+from jose import jwt
+import datetime
+from django.conf import settings
 
 
 @require_http_methods(["GET"])
@@ -25,6 +27,7 @@ def ping(request):
 @error_handler_decorator
 @require_http_methods(["GET"])
 def login(request):
+    _time = datetime.datetime
     auth_object_dict = get_headers_dict()
     auth = Auth(**auth_object_dict)
     auth.abort_if_client_app_not_valid()
@@ -49,13 +52,14 @@ def login(request):
             return create_json_response({"issue": user})
 
         auth.user_id = user.id
-        user_token = auth.get_or_register_user_token_if_not_exist()
-        auth_response_dict["ts_user_token"] = user_token
         role_model = RoleModel(user=user, client_ts=auth_object_dict["client_ts_id"])
         auth_response_dict["system_admin"] = role_model.target_object_type == "system"
         auth_response_dict["settings"] = user.user_extra
-        auth_response_dict["id"] = auth.user_id
-        return create_json_response(auth_response_dict)
+        auth_response_dict["id"] = user.id
+        expires = _time.now(datetime.UTC) + datetime.timedelta(24 * 60 * 7)  # a week
+        auth_object_dict["exp"] = expires
+        jwt_token = jwt.encode(auth_object_dict, settings.SECRET_KEY, algorithm="HS256")
+        return create_json_response(jwt_token)
     return create_json_response({"issue": "auth is rejected"})
 
 
@@ -103,6 +107,7 @@ class SearchSettings(View):
     @error_handler_decorator
     @authentication_required
     def post(self, request, id=None):
+        _time = datetime.datetime
         username = get_username_from_request()
         client_ts_id = get_client_id_from_request()
         payload = json.loads(request.body)

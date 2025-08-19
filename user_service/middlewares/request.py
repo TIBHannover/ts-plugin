@@ -13,7 +13,6 @@ class RequestMiddleware:
         return response
 
 
-
 def get_client_id_from_request():
     request = getattr(_current_context, "request", None)
     if request:
@@ -22,22 +21,21 @@ def get_client_id_from_request():
 
 
 def get_headers_dict():
-    request = getattr(_current_context, "request", {'headers':{}})
+    request = getattr(_current_context, "request", {'headers': {}})
     return {
-        "access_token": request.headers.get("Authorization"),
         "auth_provider": request.headers.get("X-TS-Auth-Provider"),
         "orcid_id": request.headers.get("X-TS-Orcid-Id"),
         "client_ts_id": request.headers.get("X-TS-Frontend-Id"),
         "client_ts_token": request.headers.get("X-TS-Frontend-Token"),
-        "user_token": request.headers.get("X-TS-User-Token"),
         "code": request.headers.get("X-TS-Auth-APP-Code"),
         "username": request.headers.get("X-TS-User-Name"),
     }
 
+
 def get_request_method():
     request = getattr(_current_context, "request", None)
     if request:
-        return request.method 
+        return request.method
     return ""
 
 
@@ -46,3 +44,11 @@ def get_username_from_request():
     if request:
         return request.headers.get("X-TS-User-Name")
     return ""
+
+
+def get_jwt_token_from_request():
+    request = getattr(_current_context, "request", None)
+    auth_header = request.headers.get("Authorization")
+    if "Bearer" not in auth_header:
+        return ""
+    return auth_header.split("Bearer ")[1]

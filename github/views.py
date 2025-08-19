@@ -19,6 +19,7 @@ from user_service.libs.utils import create_json_response
 from django.conf import settings
 import json
 from django.http import HttpResponseBadRequest, HttpResponseServerError
+from user.libs.auth import Auth
 
 
 @require_http_methods(["GET"])
@@ -42,9 +43,9 @@ def get_issues_for_ontology(request):
     page_size = args.get("size")
     page_number = args.get("page")
     url = (
-        settings.GITHUB_REPOS_URL
-        + issue_path
-        + "?state={state}&per_page={size}&page={page}"
+            settings.GITHUB_REPOS_URL
+            + issue_path
+            + "?state={state}&per_page={size}&page={page}"
     )
     url = url.format(state=issue_state, size=page_size, page=page_number)
     headers = GithubLib.create_github_request_header()
@@ -54,7 +55,7 @@ def get_issues_for_ontology(request):
         issues_list = []
         for issue in issues:
             if issue_type == "pr" or (
-                issue_type == "issue" and "pull_request" not in issue.keys()
+                    issue_type == "issue" and "pull_request" not in issue.keys()
             ):
                 issue = GithubLib.get_labels_for_issue(issue=issue)
                 issues_list.append(issue)
@@ -100,11 +101,12 @@ def submit_github_issue(request):
         return HttpResponseBadRequest("Ontology is not hosted on Github")
 
     issue_creator_url = (
-        "https://api.github.com/repos/"
-        + issue_creator_url.split("https://github.com/")[1]
+            "https://api.github.com/repos/"
+            + issue_creator_url.split("https://github.com/")[1]
     )
     payload = {"title": issue_title, "body": issue_content}
-    user_auth_token = request.headers.get("Authorization")
+    token_payload = Auth.get_jwt_token_payload()
+    user_auth_token = token_payload.get("access_token", "")
     headers = GithubLib.create_github_request_header(user_access_token=user_auth_token)
     resp = requests.post(issue_creator_url, json=payload, headers=headers)
     if resp.status_code == 201:
@@ -142,14 +144,13 @@ def get_issue_templates_for_repo(request):
     if request_header.get("auth_provider") != "github":
         return create_json_response({"error": "Only github users can use this feature"})
 
-    print(request.body)
     _form = json.loads(request.body)
     repo_url = _form["repo_url"]
     if "https://github.com/" not in repo_url:
         return HttpResponseBadRequest("Ontology is not hosted on Github")
 
     templates_url = (
-        "https://api.github.com/repos/" + repo_url.split("https://github.com/")[1]
+            "https://api.github.com/repos/" + repo_url.split("https://github.com/")[1]
     )
     template_path = "/contents/.github/ISSUE_TEMPLATE"
     if templates_url[len(templates_url) - 1] == "/":

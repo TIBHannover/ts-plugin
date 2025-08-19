@@ -15,24 +15,24 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 from user_service.middlewares.request import get_headers_dict
+from jose import jwt, JWTError
+from user_service.middlewares.request import get_jwt_token_from_request
 
 
 class Auth:
     def __init__(
             self,
             code: Optional[str] = None,
-            access_token: Optional[str] = None,
             auth_provider: Optional[str] = None,
             orcid_id: Optional[str] = None,
             client_ts_id: Optional[str] = None,
             client_ts_token: Optional[str] = None,
             user_id: Union[int, str, None] = None,
             user_token: Optional[str] = None,
-            username: Optional[str] = None,
     ) -> None:
         auth_object_dict = get_headers_dict()
         self.code = code or auth_object_dict["code"]
-        self.access_token = access_token or auth_object_dict["access_token"]
+        self.access_token = Auth.get_jwt_token_payload().get("access_token", "")
         self.auth_provider = auth_provider or auth_object_dict["auth_provider"]
         self.orcid_id = orcid_id or auth_object_dict["orcid_id"]
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
@@ -61,10 +61,10 @@ class Auth:
 
     def abort_if_not_authenticated(self) -> None:
         login_validity = False
+        self.abort_if_user_token_is_not_valid()
         self.abort_if_client_app_not_valid()
         self.abort_if_not_auth_provider()
         self.abort_if_user_does_not_exist()
-        self.abort_if_user_token_is_not_valid()
         self.abort_if_user_is_blocked()
         if self.auth_provider == "github":
             login_validity = GithubLib.login_valid(user_auth_token=self.access_token)
@@ -148,42 +148,12 @@ class Auth:
         if user["is_blocked"]:
             raise PermissionDenied("Not Authorized user")
 
-    def get_or_register_user_token_if_not_exist(self) -> str:
-        user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
-        if self.user_id and user_token:
-            created_at = (
-                timezone.make_aware(user_token.created_at)
-                if timezone.is_naive(user_token.created_at)
-                else user_token.created_at
-            )
-            token_is_old = created_at < timezone.now() - timedelta(weeks=1)
-            if not token_is_old:
-                return user_token.token
-            user_token.delete()
-
-        token = secrets.token_urlsafe(32)
-        user = UserModel.objects.get(id=self.user_id)
-        new_token = UserTokenModel()
-        new_token.user = user
-        new_token.created_at = _time.now()
-        new_token.token = token
-        new_token.save()
-        return token
-
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
-        if not self.user_token:
+        token = get_jwt_token_from_request()
+        try:
+            jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        except JWTError:
             raise PermissionDenied("Not Authorized user token")
-
-        user_token = UserTokenModel.objects.filter(user__id=self.user_id).first()
-        created_at = (
-            timezone.make_aware(user_token.created_at)
-            if timezone.is_naive(user_token.created_at)
-            else user_token.created_at
-        )
-        token_is_old = created_at < timezone.now() - timedelta(weeks=1)
-        if not user_token or user_token.token != self.user_token or token_is_old:
-            raise PermissionDenied("Not Authorized user token")
-
         return True
 
     def is_user_admin_for_entity(
@@ -253,3 +223,12 @@ class Auth:
             return True
 
         return False
+
+    @staticmethod
+    def get_jwt_token_payload():
+        token = get_jwt_token_from_request()
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            return payload
+        except JWTError:
+            return {}
