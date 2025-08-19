@@ -32,7 +32,7 @@ class Auth:
     ) -> None:
         auth_object_dict = get_headers_dict()
         self.code = code or auth_object_dict["code"]
-        self.access_token = Auth.get_jwt_token_payload().get("access_token", "")
+        self.access_token = Auth.get_provider_token_from_jwt_payload()
         self.auth_provider = auth_provider or auth_object_dict["auth_provider"]
         self.orcid_id = orcid_id or auth_object_dict["orcid_id"]
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
@@ -232,3 +232,13 @@ class Auth:
             return payload
         except JWTError:
             return {}
+
+    @staticmethod
+    def get_provider_token_from_jwt_payload():
+        # returns the oAuth provider token. used to call the provider API (example GitHub)
+        token = get_jwt_token_from_request()
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            return payload["token"]
+        except JWTError:
+            return ""

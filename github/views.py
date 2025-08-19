@@ -105,8 +105,7 @@ def submit_github_issue(request):
             + issue_creator_url.split("https://github.com/")[1]
     )
     payload = {"title": issue_title, "body": issue_content}
-    token_payload = Auth.get_jwt_token_payload()
-    user_auth_token = token_payload.get("access_token", "")
+    user_auth_token = Auth.get_provider_token_from_jwt_payload()
     headers = GithubLib.create_github_request_header(user_access_token=user_auth_token)
     resp = requests.post(issue_creator_url, json=payload, headers=headers)
     if resp.status_code == 201:
