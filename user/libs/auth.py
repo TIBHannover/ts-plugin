@@ -5,18 +5,15 @@ from user.libs.gitlab import GitLabLib
 from user.libs.orcid import OrcidLib
 from user.libs.aai import AaiLib
 from user_service.libs.utils import fetch_ontology_collections
-from user.models import UserTokenModel, RoleModel, UserModel
-import secrets
-from datetime import datetime as _time
+from user.models import RoleModel, UserModel
 from typing import Optional, Union
 from user_service.interfaces.i_editable_model_obj import IEditableModelObj
 from django.core.exceptions import PermissionDenied, BadRequest
 from django.conf import settings
-from django.utils import timezone
-from datetime import timedelta
 from user_service.middlewares.request import get_headers_dict
 from jose import jwt, JWTError
 from user_service.middlewares.request import get_jwt_token_from_request
+from user_service.middlewares.request import get_username_from_request
 
 
 class Auth:
@@ -27,8 +24,7 @@ class Auth:
             orcid_id: Optional[str] = None,
             client_ts_id: Optional[str] = None,
             client_ts_token: Optional[str] = None,
-            user_id: Union[int, str, None] = None,
-            user_token: Optional[str] = None,
+            user_id: Union[int, str, None] = None
     ) -> None:
         auth_object_dict = get_headers_dict()
         self.code = code or auth_object_dict["code"]
@@ -38,11 +34,10 @@ class Auth:
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
         self.client_ts_token = client_ts_token or auth_object_dict["client_ts_token"]
         if not user_id:
-            userId = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+            userId = UserModel.get_user_id_by_username(username=get_username_from_request())
             self.user_id = userId
         else:
             self.user_id = user_id
-        self.user_token = user_token or auth_object_dict["user_token"]
 
     def authenticate(self) -> Union[dict, bool]:
         if self.auth_provider == "github":

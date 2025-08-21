@@ -37,7 +37,7 @@ def login(request):
         created_at = _time.now()
         updated_at = _time.now()
         user_db_dict = {
-            "username": auth_response_dict["ts_username"],
+            "username": get_username_from_request(),
             "name": auth_response_dict["name"],
             "auth_provider": auth_object_dict["auth_provider"],
             "client_ts": auth_object_dict["client_ts_id"],
@@ -58,7 +58,7 @@ def login(request):
         auth_response_dict["id"] = user.id
         expires = _time.now(datetime.UTC) + datetime.timedelta(24 * 60 * 7)  # a week
         auth_object_dict["exp"] = expires
-        jwt_token = jwt.encode(auth_object_dict, settings.SECRET_KEY, algorithm="HS256")
+        jwt_token = jwt.encode(auth_response_dict, settings.SECRET_KEY, algorithm="HS256")
         return create_json_response(jwt_token)
     return create_json_response({"issue": "auth is rejected"})
 

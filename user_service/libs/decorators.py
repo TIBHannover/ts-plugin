@@ -1,7 +1,7 @@
 from django.shortcuts import HttpResponse
 from django.core.exceptions import PermissionDenied, BadRequest
 from django.http import Http404, JsonResponse
-from user_service.middlewares.request import get_headers_dict, get_request_method
+from user_service.middlewares.request import get_headers_dict, get_request_method, get_username_from_request
 from user.models import UserModel
 from user.libs.auth import Auth
 
@@ -11,7 +11,7 @@ def authentication_required(func):
         auth_object_dict = get_headers_dict()
         if get_request_method() != "OPTIONS":
             user_id = UserModel.get_user_id_by_username(
-                username=auth_object_dict["username"]
+                username=get_username_from_request()
             )
             auth_object_dict["user_id"] = user_id
             auth_controller = Auth(**auth_object_dict)
