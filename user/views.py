@@ -37,7 +37,7 @@ def login(request):
         created_at = _time.now()
         updated_at = _time.now()
         user_db_dict = {
-            "username": get_username_from_request(),
+            "username": auth_response_dict["ts_username"],
             "name": auth_response_dict["name"],
             "auth_provider": auth_object_dict["auth_provider"],
             "client_ts": auth_object_dict["client_ts_id"],

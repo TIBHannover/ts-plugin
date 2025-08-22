@@ -99,7 +99,7 @@ class NoteModel(models.Model):
         end = conditions.get("limit", 10) + start
         notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
-        ).order_by("created_at")[start: end]
+        ).order_by("created_at")[start: en]
 
         if not notes:
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
