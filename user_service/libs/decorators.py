@@ -63,7 +63,7 @@ def error_handler_decorator(func):
             # if current_app.config.get("DEBUG_MODDE"):
             # raise
             # logging.error(e)
-            # raise
+            raise
             print(e, flush=True)
             response = HttpResponse(
                 str(e),

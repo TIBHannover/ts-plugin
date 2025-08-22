@@ -137,7 +137,7 @@ def note_list(request):
         page = DEFAULT_NOTE_LIST_PAGE
 
     auth_object_dict = get_headers_dict()
-    user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+    user_id = UserModel.get_user_id_by_username(username=get_username_from_request())
     auth = Auth()
 
     visibilities = ["public"]
@@ -191,7 +191,7 @@ def get(request, note_id):
     with_comments = args.get("withComments")
     ontology_id = args.get("ontology")
     auth_object_dict = get_headers_dict()
-    user_id = UserModel.get_user_id_by_username(username=auth_object_dict["username"])
+    user_id = UserModel.get_user_id_by_username(username=get_username_from_request())
     auth_object_dict["user_id"] = user_id
     _auth = Auth(**auth_object_dict)
     client_id = get_client_id_from_request()

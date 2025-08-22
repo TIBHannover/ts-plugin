@@ -11,7 +11,7 @@ urlpatterns = [
     path("get/", csrf_exempt(views.get), name="get"),
     path("<str:setId>/add_term/", csrf_exempt(views.add_term), name="add_term"),
     path(
-        "<str:setId>/remove_term/",
+        "<str:setId>/remove_term",
         csrf_exempt(views.remove_term),
         name="remove_term",
     ),

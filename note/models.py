@@ -1,6 +1,4 @@
 from django.db import models
-from sqlparse.utils import offset
-
 from user.models import UserModel
 from typing import Union
 from report.models import ReportModel
@@ -99,7 +97,7 @@ class NoteModel(models.Model):
         end = conditions.get("limit", 10) + start
         notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
-        ).order_by("created_at")[start: en]
+        ).order_by("created_at")[start: end]
 
         if not notes:
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
