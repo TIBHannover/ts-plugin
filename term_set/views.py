@@ -3,7 +3,6 @@ from django.views.decorators.http import require_http_methods
 from user_service.libs.decorators import (
     authentication_required,
     error_handler_decorator,
-    client_id_validation,
 )
 from .models import TermSetModel, TermsModel
 from user.models import UserModel
@@ -70,7 +69,6 @@ def create(request):
 
 
 @error_handler_decorator
-@client_id_validation
 @require_http_methods(["GET"])
 def get(request, id=None):
     username = get_username_from_request()

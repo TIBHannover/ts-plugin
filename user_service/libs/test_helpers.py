@@ -4,11 +4,30 @@ from collection.models import CollectionModel
 from term_set.models import TermSetModel, TermsModel
 from django.conf import settings
 from datetime import datetime as _time
+import datetime
 import uuid
+from jose import jwt, JWTError
 
 
 class TestHelper:
     client_ts = "general"
+
+    @staticmethod
+    def generate_jwt(payload, auth_provider_token, username, orcid_id=""):
+        payload["exp"] = datetime.datetime.now(datetime.UTC) + datetime.timedelta(60 * 5)
+        payload["token"] = auth_provider_token
+        payload["ts_username"] = username
+        payload["orcid_id"] = orcid_id
+        jwt_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+        return jwt_token
+
+    @staticmethod
+    def validate_and_return_jwt_payload(token: str):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            return payload
+        except JWTError:
+            return {}
 
     @staticmethod
     def createGitHubUser() -> [UserModel, UserTokenModel]:
@@ -48,11 +67,11 @@ class TestHelper:
 
     @staticmethod
     def createNote(
-        user: UserModel,
-        visibility="public",
-        component_type="ontology",
-        ontology_id="vibso",
-        parent_ontology_id="",
+            user: UserModel,
+            visibility="public",
+            component_type="ontology",
+            ontology_id="vibso",
+            parent_ontology_id="",
     ) -> NoteModel:
         note = NoteModel(
             creator=user,
@@ -94,7 +113,7 @@ class TestHelper:
 
     @staticmethod
     def createRole(
-        user: UserModel, target_id: str, target_type: str, role="admin"
+            user: UserModel, target_id: str, target_type: str, role="admin"
     ) -> RoleModel:
         role = RoleModel(
             user=user,
@@ -110,7 +129,7 @@ class TestHelper:
 
     @staticmethod
     def create_collection(
-        user: UserModel, title: str, content: str, ontology_ids: [str]
+            user: UserModel, title: str, content: str, ontology_ids: [str]
     ) -> CollectionModel:
         collection_model = CollectionModel(
             title=title,
@@ -124,7 +143,7 @@ class TestHelper:
 
     @staticmethod
     def create_search_setting(
-        user: UserModel, title: str, description: str, settings: dict
+            user: UserModel, title: str, description: str, settings: dict
     ) -> SearchSettingModel:
         setting_model = SearchSettingModel(
             title=title,
@@ -138,7 +157,7 @@ class TestHelper:
 
     @staticmethod
     def create_term_set(
-        user: UserModel, name: str, visibility: str, description: str, terms: list
+            user: UserModel, name: str, visibility: str, description: str, terms: list
     ) -> TermSetModel:
         term_set = TermSetModel()
         term_set.id = str(uuid.uuid4())

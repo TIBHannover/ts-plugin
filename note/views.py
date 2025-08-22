@@ -10,8 +10,7 @@ from .models import NoteModel, NoteCommentModel
 from report.models import ReportModel
 from user_service.libs.decorators import (
     error_handler_decorator,
-    authentication_required,
-    client_id_validation,
+    authentication_required
 )
 import math
 from django.views.decorators.http import require_http_methods
@@ -121,7 +120,6 @@ def update(request):
 
 
 @error_handler_decorator
-@client_id_validation
 @require_http_methods(['GET'])
 def note_list(request):
     args = request.GET
@@ -187,7 +185,6 @@ def note_list(request):
 
 
 @error_handler_decorator
-@client_id_validation
 @require_http_methods(['GET'])
 def get(request, note_id):
     args = request.GET

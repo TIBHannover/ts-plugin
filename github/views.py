@@ -6,7 +6,6 @@ from datetime import datetime as _time
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required,
-    client_id_validation,
 )
 import urllib.parse as url_parser
 from django.views.decorators.http import require_http_methods
@@ -28,7 +27,6 @@ def ping(request):
 
 
 @error_handler_decorator
-@client_id_validation
 @require_http_methods(["GET"])
 def get_issues_for_ontology(request):
     args = request.GET
