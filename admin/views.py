@@ -56,37 +56,44 @@ def get_stats(request):
     header = get_headers_dict()
     if settings.STATS_API_TOKEN != header.get("access_token", "default"):
         raise Http404("not found")
-        
-    client_ts = "nfdi4chem";
-    stats = {}
-    users = UserModel.objects.filter(client_ts=client_ts).all();
-    stats["user_count"] = len(users)
-    note_count = 0
-    comment_count = 0
-    collection_count = 0
-    termset_count = 0
-    report_count = 0
-    github_issues_count = 0
-    term_request_count = 0
-    for u in users:
-        user_notes = NoteModel.objects.filter(creator=u).all()
-        note_count += len(user_notes)
-        comment_count += len(u.user_comments.all())
-        collection_count += len(u.user_collections.all())
-        termset_count += len(u.user_term_sets.all())
-        report_count += len(ReportModel.objects.filter(reporter = u).all()) 
-        github_issues = GithubIssueRequestModel.objects.filter(user=u).all()
-        for gi in github_issues:
-            if gi.issue_type == "termRequest":
-                term_request_count += 1
-            else:
-                github_issues_count += 1
+    
+    
+    def calculate_stats(client_ts, stats):
+        users = UserModel.objects.filter(client_ts=client_ts).all();
+        stats["user_count"] = len(users)
+        note_count = 0
+        comment_count = 0
+        collection_count = 0
+        termset_count = 0
+        report_count = 0
+        github_issues_count = 0
+        term_request_count = 0
+        for u in users:
+            user_notes = NoteModel.objects.filter(creator=u).all()
+            note_count += len(user_notes)
+            comment_count += len(u.user_comments.all())
+            collection_count += len(u.user_collections.all())
+            termset_count += len(u.user_term_sets.all())
+            report_count += len(ReportModel.objects.filter(reporter = u).all()) 
+            github_issues = GithubIssueRequestModel.objects.filter(user=u).all()
+            for gi in github_issues:
+                if gi.issue_type == "termRequest":
+                    term_request_count += 1
+                else:
+                    github_issues_count += 1
 
-    stats["note_count"] = note_count
-    stats["comment_count"] = comment_count
-    stats["collection_count"] = collection_count
-    stats["termset_count"] = termset_count
-    stats["report_count"] = report_count
-    stats["github_issues_count"] = github_issues_count
-    stats["term_request_count"] = term_request_count
+        stats["note_count"] = note_count
+        stats["comment_count"] = comment_count
+        stats["collection_count"] = collection_count
+        stats["termset_count"] = termset_count
+        stats["report_count"] = report_count
+        stats["github_issues_count"] = github_issues_count
+        stats["term_request_count"] = term_request_count
+
+    client_ts = ["nfdi4chem", "general", "nfdi4ing"];
+    stats = {}
+    for cts in client_ts:
+        stats[cts] = {}
+        calculate_stats(cts, stats[cts])
+
     return create_json_response({"stats": stats})
