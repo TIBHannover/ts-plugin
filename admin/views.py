@@ -62,7 +62,9 @@ def is_system_admin():
 
 @error_handler_decorator
 @require_http_methods(["GET"])
-def get_stats(request, project_id):
+def get_stats(request):
+    args = request.GET
+    project_id = args.get("project_id")
     header = get_headers_dict()
     if settings.STATS_API_TOKEN != header.get("access_token", "default"):
         raise Http404("not found")
