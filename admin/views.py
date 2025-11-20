@@ -19,6 +19,7 @@ from django.conf import settings
 from django.http import Http404
 import urllib.parse
 import requests
+from django.http import JsonResponse
 
 
 @error_handler_decorator
@@ -61,7 +62,7 @@ def is_system_admin():
 
 @error_handler_decorator
 @require_http_methods(["GET"])
-def get_stats(request):
+def get_stats(request, project_id):
     header = get_headers_dict()
     if settings.STATS_API_TOKEN != header.get("access_token", "default"):
         raise Http404("not found")
@@ -133,10 +134,11 @@ def get_stats(request):
         stats["contact_form_count"] = contact_form_count
 
     client_ts = ["nfdi4chem", "general", "nfdi4ing"]
-    stats = {}
-    for cts in client_ts:
-        stats[cts] = {}
-        calculate_stats(cts, stats[cts])
-        calculate_gitlab_stats(cts, stats[cts])
+    if project_id.lower() not in client_ts:
+        raise Http404("not found")
 
-    return create_json_response({"stats": stats})
+    stats = {}
+    calculate_stats(project_id, stats)
+    calculate_gitlab_stats(project_id, stats)
+
+    return JsonResponse(stats)
