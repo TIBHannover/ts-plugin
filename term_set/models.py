@@ -29,6 +29,7 @@ class TermSetModel(models.Model):
             "name": self.name,
             "description": self.description,
             "creator": self.creator.id,
+            "creator_name": self.creator.username,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "visibility": self.visibility,
