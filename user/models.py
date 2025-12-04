@@ -3,6 +3,7 @@ from django.conf import settings
 from typing import Optional, Union
 from user_service.middlewares.request import get_client_id_from_request
 from datetime import datetime as _time
+from django.contrib.auth.hashers import make_password
 
 
 ALLOWED_ROLES = ["admin"]
@@ -24,7 +25,7 @@ class UserModel(models.Model):
         unique_together = (("username", "client_ts"),)
 
     def __str__(self) -> str:
-        return f"<User {self.username}>"
+        return f"<User {self.username} ({self.client_ts})>"
 
     def to_dict(self) -> dict:
         return {
@@ -116,24 +117,23 @@ class UserModel(models.Model):
 
 
 class UserTokenModel(models.Model):
+    # for API keys
     user = models.ForeignKey(
-        UserModel, on_delete=models.CASCADE, related_name="user_ts_token"
+        UserModel, on_delete=models.CASCADE, related_name="user_api_keys"
     )
     created_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True)  # null means no expiration
     token = models.CharField()
 
     class Meta:
-        db_table = "user_tokens"
+        db_table = "api_keys"
+
+    def save(self, **kwargs):
+        self.token = make_password(self.token)
+        super().save(**kwargs)
 
     def __str__(self) -> str:
-        return f"<UserToken {self.token}>"
-
-    def update_token(self, new_token: str) -> bool:
-        user_token_record = UserTokenModel.objects.filter(id=self.id).first()
-        if user_token_record:
-            user_token_record.token = new_token
-            user_token_record.save()
-        return True
+        return f"<APIKey {self.user.username} ({self.user.client_ts})>"
 
 
 class RoleModel(models.Model):
