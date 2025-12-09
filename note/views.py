@@ -15,7 +15,6 @@ from user_service.libs.decorators import (
 import math
 from django.views.decorators.http import require_http_methods
 from user_service.middlewares.request import (
-    get_client_id_from_request,
     get_headers_dict,
     get_username_from_request,
 )
@@ -115,8 +114,11 @@ def update(request):
     user = UserModel.get_by_username(username=username)
 
     can_edit = False
-    for _, value in user.get_user_admin_roles().items():
+    for key, value in user.get_user_admin_roles().items():
         if ontology_id in value:
+            can_edit = True
+            break
+        if key == "system" and len(value) > 0:
             can_edit = True
             break
     if not can_edit:
@@ -308,8 +310,11 @@ def update_comment(request):
         raise Http404("Comment does not exist.")
 
     can_edit = False
-    for _, value in user.get_user_admin_roles().items():
+    for key, value in user.get_user_admin_roles().items():
         if ontology_id in value:
+            can_edit = True
+            break
+        if key == "system" and len(value) > 0:
             can_edit = True
             break
     if not can_edit:
@@ -339,8 +344,11 @@ def delete(request):
         objectModel = NoteCommentModel
 
     can_edit = False
-    for _, value in user.get_user_admin_roles().items():
+    for key, value in user.get_user_admin_roles().items():
         if ontology_id in value:
+            can_edit = True
+            break
+        if key == "system" and len(value) > 0:
             can_edit = True
             break
     if not can_edit and object_type != "note":
@@ -369,8 +377,11 @@ def update_pin(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
     can_pin = False
-    for _, value in user.get_user_admin_roles().items():
+    for key, value in user.get_user_admin_roles().items():
         if ontology_id in value:
+            can_pin = True
+            break
+        if key == "system" and len(value) > 0:
             can_pin = True
             break
     if not can_pin:

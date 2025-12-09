@@ -1,5 +1,4 @@
 from user.models import UserModel, RoleModel
-from user.libs.auth import Auth
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required,
@@ -27,23 +26,21 @@ from django.http import JsonResponse
 @require_http_methods(["POST"])
 def is_entity_admin(request):
     auth_object_dict = get_headers_dict()
-    client_ts = get_client_id_from_request()
-    user = UserModel.objects.filter(
-        username=get_username_from_request(), client_ts=client_ts
-    ).first()
+    user = UserModel.get_by_username(username=get_username_from_request())
     auth_object_dict["user_id"] = user.id
-    auth_controller = Auth(**auth_object_dict)
-
     _form = json.loads(request.body)
     ontologyId = _form.get("ontologyId")
     collectionId = _form.get("collectionId")
-    return create_json_response(
-        {
-            "is_admin": auth_controller.is_user_admin_for_entity(
-                ontologyId=ontologyId, collectionId=collectionId
-            )
-        }
-    )
+
+    for key, value in user.get_user_admin_roles().items():
+        if ontologyId in value:
+            return create_json_response({"is_admin": True})
+        if collectionId in value:
+            return create_json_response({"is_admin": True})
+        if key == "system" and len(value) > 0:
+            return create_json_response({"is_admin": True})
+
+    return create_json_response({"is_admin": False})
 
 
 @error_handler_decorator
