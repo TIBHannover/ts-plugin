@@ -1,6 +1,7 @@
 from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
+import copy
 
 
 class TestNoteAccess(TestCase, BaseTest):
@@ -195,3 +196,12 @@ class TestNoteAccess(TestCase, BaseTest):
         self.assertEqual(response.status_code, 200)
         for note in response.json()["_result"]["notes"]:
             self.assertEqual(note["semantic_component_type"], "class")
+
+    def test_note_list_should_only_contains_notes_created_by_the_given_client_ts(self):
+        headers = copy.copy(self.github_request_headers)
+        headers["X-TS-Frontend-Id"] = "some_other_client_ts"
+        params = {"ontology": self.test_ontology_id}
+        note_list_url = "/note/list/"
+        response = self.client.get(note_list_url, headers=headers, data=params)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["_result"]["notes"]), 0)

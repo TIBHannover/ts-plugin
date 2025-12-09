@@ -2,6 +2,7 @@ from django.db import models
 from user.models import UserModel
 from typing import Union
 from report.models import ReportModel
+from user_service.middlewares.request import get_client_id_from_request
 
 VISIBILITIES_VALUES = ["me", "internal", "public"]
 SC_TYPES = ["ontology", "class", "property", "individual"]
@@ -67,7 +68,8 @@ class NoteModel(models.Model):
 
     @staticmethod
     def get_notes_by_conditions(conditions: dict) -> dict:
-        base_condition_set = _Q(active=True)
+        client_ts = get_client_id_from_request()
+        base_condition_set = _Q(active=True) & _Q(creator__client_ts=client_ts)
         ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(
             pinned=conditions["pinned"]
         )
