@@ -12,22 +12,24 @@ class BaseTest:
     test_github_username = "github_" + settings.GITHUB_LOGIN_USERNAME
     test_orcid_username = "orcid_" + settings.ORCID_LOGIN_USERNAME
     client_ts_id = "general"
-    client_ts_token = settings.FRONTEDN_AUTH_TOKEN
     github_request_headers = {
-        "Authorization": "Bearer {}".format(TestHelper.generate_jwt({}, github_access_token, test_github_username)),
+        "Authorization": "Bearer {}".format(
+            TestHelper.generate_jwt({}, github_access_token, test_github_username)
+        ),
         "Content-Type": "application/json",
         "X-TS-Auth-Provider": "github",
         "X-TS-Frontend-Id": client_ts_id,
-        "X-TS-Frontend-Token": client_ts_token
     }
 
     orcid_request_headers = {
         "Authorization": "Bearer {}".format(
-            TestHelper.generate_jwt({}, orcid_access_token, test_orcid_username, orcid_id)),
+            TestHelper.generate_jwt(
+                {}, orcid_access_token, test_orcid_username, orcid_id
+            )
+        ),
         "Content-Type": "application/json",
         "X-TS-Auth-Provider": "orcid",
         "X-TS-Frontend-Id": client_ts_id,
-        "X-TS-Frontend-Token": client_ts_token
     }
 
     guest_request_headers = {
@@ -35,5 +37,4 @@ class BaseTest:
         "Content-Type": "application/json",
         "X-TS-Auth-Provider": "github",
         "X-TS-Frontend-Id": client_ts_id,
-        "X-TS-Frontend-Token": client_ts_token
     }

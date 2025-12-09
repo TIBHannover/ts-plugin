@@ -155,7 +155,6 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-FRONTEDN_AUTH_TOKEN = env("FRONTEDN_AUTH_TOKEN", default=None)
 SUB_PATH = env("SUB_PATH", default="")
 GITHUB_TS_USER_API_TOKEN = env("GITHUB_TS_USER_API_TOKEN", default=None)
 GITLAB_TS_USER_API_TOKEN = env("GITLAB_TS_USER_API_TOKEN", default=None)

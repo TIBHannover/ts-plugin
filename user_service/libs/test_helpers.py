@@ -1,4 +1,4 @@
-from user.models import UserModel, UserTokenModel, RoleModel, SearchSettingModel
+from user.models import UserModel, RoleModel, SearchSettingModel
 from note.models import NoteModel, NoteCommentModel
 from collection.models import CollectionModel
 from term_set.models import TermSetModel, TermsModel
@@ -14,7 +14,9 @@ class TestHelper:
 
     @staticmethod
     def generate_jwt(payload, auth_provider_token, username, orcid_id=""):
-        payload["exp"] = datetime.datetime.now(datetime.UTC) + datetime.timedelta(60 * 5)
+        payload["exp"] = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            60 * 5
+        )
         payload["token"] = auth_provider_token
         payload["ts_username"] = username
         payload["orcid_id"] = orcid_id
@@ -30,7 +32,7 @@ class TestHelper:
             return {}
 
     @staticmethod
-    def createGitHubUser() -> [UserModel, UserTokenModel]:
+    def createGitHubUser() -> UserModel:
         user_github = UserModel(
             username="github_" + settings.GITHUB_LOGIN_USERNAME,
             name=settings.GITHUB_LOGIN_USERNAME,
@@ -39,17 +41,10 @@ class TestHelper:
             client_ts=TestHelper.client_ts,
         )
         user_github.save()
-        user_token_github = UserTokenModel(
-            user=user_github,
-            created_at=_time.now(),
-            token=settings.GITHUB_USER_TS_TOKEN,
-        )
-
-        user_token_github.save()
-        return user_github, user_token_github
+        return user_github
 
     @staticmethod
-    def createOrcidUser() -> [UserModel, UserTokenModel]:
+    def createOrcidUser() -> UserModel:
         user_orcid = UserModel(
             username="orcid_" + settings.ORCID_LOGIN_USERNAME,
             name=settings.ORCID_LOGIN_USERNAME,
@@ -58,20 +53,15 @@ class TestHelper:
             client_ts=TestHelper.client_ts,
         )
         user_orcid.save()
-
-        user_token_orcid = UserTokenModel(
-            user=user_orcid, created_at=_time.now(), token=settings.ORCID_USER_TS_TOKEN
-        )
-        user_token_orcid.save()
-        return user_orcid, user_token_orcid
+        return user_orcid
 
     @staticmethod
     def createNote(
-            user: UserModel,
-            visibility="public",
-            component_type="ontology",
-            ontology_id="vibso",
-            parent_ontology_id="",
+        user: UserModel,
+        visibility="public",
+        component_type="ontology",
+        ontology_id="vibso",
+        parent_ontology_id="",
     ) -> NoteModel:
         note = NoteModel(
             creator=user,
@@ -80,7 +70,6 @@ class TestHelper:
             content="Test Content",
             title="Test Note",
             semantic_component_type=component_type,
-            client_ts=TestHelper.client_ts,
             semantic_component_iri="some_iri",
             semantic_component_label="Test Label",
             visibility=visibility,
@@ -113,7 +102,7 @@ class TestHelper:
 
     @staticmethod
     def createRole(
-            user: UserModel, target_id: str, target_type: str, role="admin"
+        user: UserModel, target_id: str, target_type: str, role="admin"
     ) -> RoleModel:
         role = RoleModel(
             user=user,
@@ -129,7 +118,7 @@ class TestHelper:
 
     @staticmethod
     def create_collection(
-            user: UserModel, title: str, content: str, ontology_ids: [str]
+        user: UserModel, title: str, content: str, ontology_ids: [str]
     ) -> CollectionModel:
         collection_model = CollectionModel(
             title=title,
@@ -143,7 +132,7 @@ class TestHelper:
 
     @staticmethod
     def create_search_setting(
-            user: UserModel, title: str, description: str, settings: dict
+        user: UserModel, title: str, description: str, settings: dict
     ) -> SearchSettingModel:
         setting_model = SearchSettingModel(
             title=title,
@@ -157,7 +146,7 @@ class TestHelper:
 
     @staticmethod
     def create_term_set(
-            user: UserModel, name: str, visibility: str, description: str, terms: list
+        user: UserModel, name: str, visibility: str, description: str, terms: list
     ) -> TermSetModel:
         term_set = TermSetModel()
         term_set.id = str(uuid.uuid4())

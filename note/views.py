@@ -51,6 +51,8 @@ def create(request):
         visibility = "me"
 
     user = UserModel.get_by_username(username=creator_username)
+    if not user:
+        raise PermissionDenied("Not Authorized user")
 
     note_model_record_dict = {
         "creator_id": user.id,

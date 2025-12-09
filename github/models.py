@@ -1,12 +1,13 @@
 from django.db import models
 from user.models import UserModel
-from note.models import CLIENT_TS
 
 ISSUE_TYPES = ["general", "termRequest"]
 
 
 class GithubIssueRequestModel(models.Model):
-    user = models.ForeignKey(UserModel, models.DO_NOTHING, related_name='user_github_issues')
+    user = models.ForeignKey(
+        UserModel, models.DO_NOTHING, related_name="user_github_issues"
+    )
     created_at = models.DateTimeField()
     ontology_id = models.CharField()
     issue_content = models.CharField()
