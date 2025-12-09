@@ -59,6 +59,18 @@ class UserModel(models.Model):
 
         return user
 
+    def get_user_admin_roles(self):
+        roles = self.user_roles.all()
+        result = {"system": [], "collection": [], "ontology": []}
+        for r in roles:
+            if r.role != "admin":
+                continue
+            try:
+                result[r.target_object_type].append(r.target_object_id)
+            except KeyError:
+                continue
+        return result
+
     @staticmethod
     def get_by_username(username: str, client_ts: Optional[str] = None):
         client = get_client_id_from_request() if not client_ts else client_ts

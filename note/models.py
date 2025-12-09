@@ -4,7 +4,6 @@ from typing import Union
 from report.models import ReportModel
 from user.libs.auth import Auth
 
-CLIENT_TS = ["general", "nfdi4chem", "nfdi4ing"]
 VISIBILITIES_VALUES = ["me", "internal", "public"]
 SC_TYPES = ["ontology", "class", "property", "individual"]
 _Q = models.Q
@@ -16,7 +15,6 @@ class NoteModel(models.Model):
     ontology_id = models.CharField()
     content = models.CharField()
     title = models.CharField()
-    client_ts = models.CharField()
     semantic_component_type = models.CharField()
     semantic_component_iri = models.CharField()
     visibility = models.CharField(default="me")
@@ -34,7 +32,6 @@ class NoteModel(models.Model):
             "id": self.id,
             "ontology_id": self.ontology_id,
             "created_at": self.created_at,
-            "client_ts": self.client_ts,
             "semantic_component_type": self.semantic_component_type,
             "semantic_component_iri": self.semantic_component_iri,
             "semantic_component_label": self.semantic_component_label,
@@ -47,12 +44,11 @@ class NoteModel(models.Model):
         }
 
     def save(self, **kwargs):
-        client_ts_is_valid = self.client_ts in CLIENT_TS
         visibility_is_valid = self.visibility in VISIBILITIES_VALUES
         type_is_valid = self.semantic_component_type in SC_TYPES
         if not visibility_is_valid:
             self.visibility = "me"
-        if client_ts_is_valid and type_is_valid:
+        if type_is_valid:
             super().save(**kwargs)
         else:
             return
@@ -72,20 +68,30 @@ class NoteModel(models.Model):
 
     @staticmethod
     def get_notes_by_conditions(conditions: dict) -> dict:
-        base_condition_set = _Q(active=True) & _Q(client_ts=conditions["client_ts"])
-        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(pinned=conditions["pinned"])
+        base_condition_set = _Q(active=True)
+        ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(
+            pinned=conditions["pinned"]
+        )
         parent_ontology_condition_set = _Q(parent_ontology_id=conditions["ontology_id"])
-        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(creator_id=conditions["user_id"])
+        visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(
+            creator_id=conditions["user_id"]
+        )
 
         if conditions.get("semantic_component_type"):
-            base_condition_set &= _Q(semantic_component_type=conditions["semantic_component_type"])
+            base_condition_set &= _Q(
+                semantic_component_type=conditions["semantic_component_type"]
+            )
 
         if conditions.get("semantic_component_iri"):
-            base_condition_set &= _Q(semantic_component_iri=conditions["semantic_component_iri"])
+            base_condition_set &= _Q(
+                semantic_component_iri=conditions["semantic_component_iri"]
+            )
             ontology_condition_set = _Q(ontology_id=conditions["ontology_id"])
 
         if conditions.get("get_notes_from_children"):
-            ontology_condition_set = _Q(parent_ontology_condition_set) | ontology_condition_set
+            ontology_condition_set = (
+                _Q(parent_ontology_condition_set) | ontology_condition_set
+            )
 
         count_of_all_notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
@@ -97,7 +103,7 @@ class NoteModel(models.Model):
         end = conditions.get("limit", 10) + start
         notes = NoteModel.objects.filter(
             _Q(base_condition_set & visibility_condition_set & ontology_condition_set)
-        ).order_by("created_at")[start: end]
+        ).order_by("created_at")[start:end]
 
         if not notes:
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
@@ -106,10 +112,13 @@ class NoteModel(models.Model):
         for note in notes:
             comment_count = note.note_comments.filter(active=True).count()
             note_dict = note.to_dict()
-            note_dict["imported"] = False if conditions["ontology_id"] == note_dict["ontology_id"] else True
+            note_dict["imported"] = (
+                False if conditions["ontology_id"] == note_dict["ontology_id"] else True
+            )
             note_dict["comments_count"] = comment_count
-            note_report = ReportModel.objects.filter(reported_object_type="note",
-                                                     reported_object_id=note_dict["id"]).first()
+            note_report = ReportModel.objects.filter(
+                reported_object_type="note", reported_object_id=note_dict["id"]
+            ).first()
             note_dict["can_edit"] = auth.user_can_edit_object(
                 objectModel=NoteModel,
                 object_id=note_dict["id"],
@@ -132,11 +141,8 @@ class NoteModel(models.Model):
             return False
         return True
 
-    def can_visit(self, user_id: Union[int, str], client_ts: str, is_guest: bool):
-        visibilities = ['public'] if is_guest else ['public', 'internal']
-        if self.client_ts != client_ts:
-            return False
-
+    def can_visit(self, user_id: Union[int, str], is_guest: bool):
+        visibilities = ["public"] if is_guest else ["public", "internal"]
         if self.visibility not in visibilities and self.creator.id != user_id:
             return False
 
@@ -154,7 +160,9 @@ class NoteModel(models.Model):
 
 
 class NoteCommentModel(models.Model):
-    creator = models.ForeignKey(UserModel, models.DO_NOTHING, related_name="user_comments")
+    creator = models.ForeignKey(
+        UserModel, models.DO_NOTHING, related_name="user_comments"
+    )
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField(blank=True, null=True)
     content = models.CharField()

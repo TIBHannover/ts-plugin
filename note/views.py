@@ -1,7 +1,7 @@
 from user_service.libs.utils import (
     create_json_response,
     add_to_dict_if_value_is_not_none,
-    get_int_from_string
+    get_int_from_string,
 )
 from user.models import UserModel
 from user.libs.auth import Auth
@@ -10,11 +10,15 @@ from .models import NoteModel, NoteCommentModel
 from report.models import ReportModel
 from user_service.libs.decorators import (
     error_handler_decorator,
-    authentication_required
+    authentication_required,
 )
 import math
 from django.views.decorators.http import require_http_methods
-from user_service.middlewares.request import get_client_id_from_request, get_headers_dict, get_username_from_request
+from user_service.middlewares.request import (
+    get_client_id_from_request,
+    get_headers_dict,
+    get_username_from_request,
+)
 from django.http import HttpResponseServerError, Http404, HttpResponseBadRequest
 from django.core.exceptions import PermissionDenied
 from django.conf import settings
@@ -23,7 +27,7 @@ import json
 DEFAULT_NOTE_LIST_SIZE = 10
 DEFAULT_NOTE_LIST_PAGE = 1
 
-require_http_methods(['GET'])
+require_http_methods(["GET"])
 
 
 def ping(request):
@@ -32,10 +36,9 @@ def ping(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['POST'])
+@require_http_methods(["POST"])
 def create(request):
     payload = json.loads(request.body)
-    frontend_id = get_client_id_from_request()
     creator_username = get_username_from_request()
     title = payload["title"]
     content = payload["content"]
@@ -48,7 +51,7 @@ def create(request):
     if visibility.lower() not in ["me", "internal", "public"]:
         visibility = "me"
 
-    user = UserModel.objects.filter(username=creator_username, client_ts=frontend_id).first()
+    user = UserModel.get_by_username(username=creator_username)
 
     note_model_record_dict = {
         "creator_id": user.id,
@@ -57,7 +60,6 @@ def create(request):
         "content": content,
         "title": title,
         "semantic_component_type": semantic_component_type.lower(),
-        "client_ts": frontend_id.lower(),
         "semantic_component_iri": semantic_component_iri,
         "semantic_component_label": semantic_component_label,
         "visibility": visibility,
@@ -72,10 +74,9 @@ def create(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['PUT'])
+@require_http_methods(["PUT"])
 def update(request):
     payload = json.loads(request.body)
-    frontend_id = get_client_id_from_request()
     noteId = payload["noteId"]
     title = payload.get("title")
     content = payload.get("content")
@@ -95,9 +96,15 @@ def update(request):
     add_to_dict_if_value_is_not_none(updates, "ontology_id", ontology_id)
     add_to_dict_if_value_is_not_none(updates, "title", title)
     add_to_dict_if_value_is_not_none(updates, "content", content)
-    add_to_dict_if_value_is_not_none(updates, "semantic_component_type", semantic_component_type)
-    add_to_dict_if_value_is_not_none(updates, "semantic_component_iri", semantic_component_iri)
-    add_to_dict_if_value_is_not_none(updates, "semantic_component_label", semantic_component_label)
+    add_to_dict_if_value_is_not_none(
+        updates, "semantic_component_type", semantic_component_type
+    )
+    add_to_dict_if_value_is_not_none(
+        updates, "semantic_component_iri", semantic_component_iri
+    )
+    add_to_dict_if_value_is_not_none(
+        updates, "semantic_component_label", semantic_component_label
+    )
     add_to_dict_if_value_is_not_none(updates, "visibility", visibility)
 
     note_to_update = NoteModel.objects.filter(id=noteId).first()
@@ -105,12 +112,15 @@ def update(request):
         raise Http404("Note does not exist.")
 
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
+    user = UserModel.get_by_username(username=username)
 
-    _auth = Auth(user_id=user.id, client_ts_id=frontend_id)
-    can_edit = _auth.user_can_edit_object(
-        objectModel=NoteModel, object_id=noteId, role_target_object_id=ontology_id
-    )
+    can_edit = False
+    for _, value in user.get_user_admin_roles().items():
+        if ontology_id in value:
+            can_edit = True
+            break
+    if not can_edit:
+        can_edit = NoteModel.user_can_edit(note_id=noteId, user_id=user.id)
     if not can_edit:
         raise PermissionDenied("Not Authorized")
 
@@ -120,7 +130,7 @@ def update(request):
 
 
 @error_handler_decorator
-@require_http_methods(['GET'])
+@require_http_methods(["GET"])
 def note_list(request):
     args = request.GET
     ontology_id = args.get("ontology")
@@ -136,8 +146,8 @@ def note_list(request):
     if not page:
         page = DEFAULT_NOTE_LIST_PAGE
 
-    auth_object_dict = get_headers_dict()
-    user_id = UserModel.get_user_id_by_username(username=get_username_from_request())
+    user = UserModel.get_by_username(username=get_username_from_request())
+    user_id = user.id
     auth = Auth()
 
     visibilities = ["public"]
@@ -149,7 +159,6 @@ def note_list(request):
         user_id = -1
 
     note_list_conditions = {}
-    note_list_conditions["client_ts"] = auth_object_dict["client_ts_id"]
     note_list_conditions["ontology_id"] = ontology_id
     note_list_conditions["visibilities"] = visibilities
     note_list_conditions["user_id"] = user_id
@@ -185,32 +194,26 @@ def note_list(request):
 
 
 @error_handler_decorator
-@require_http_methods(['GET'])
+@require_http_methods(["GET"])
 def get(request, note_id):
     args = request.GET
     with_comments = args.get("withComments")
     ontology_id = args.get("ontology")
     auth_object_dict = get_headers_dict()
-    user_id = UserModel.get_user_id_by_username(username=get_username_from_request())
-    auth_object_dict["user_id"] = user_id
-    _auth = Auth(**auth_object_dict)
-    client_id = get_client_id_from_request()
-    try:
-        _auth.abort_if_user_token_is_not_valid()
-    except:
+    user = UserModel.get_by_username(username=get_username_from_request())
+    if not user:
+        # user is a guest user
         user_id = -1
+    else:
+        user_id = user.id
+    auth_object_dict["user_id"] = user_id
 
     note = NoteModel.objects.filter(id=note_id).first()
     if not note:
         raise Http404("Note does not exist")
 
-    _auth.user_id = user_id
-    can_edit = _auth.user_can_edit_object(
-        objectModel=NoteModel,
-        object_id=note.id,
-        role_target_object_id=note.ontology_id,
-    )
-    if not note.can_visit(user_id=user_id, client_ts=client_id, is_guest=_auth.user_is_guest()):
+    can_edit = NoteModel.user_can_edit(note_id=note.id, user_id=user_id)
+    if not note.can_visit(user_id=user_id, is_guest=(user_id == -1)):
         raise Http404("Note does not exist")
 
     note_report_count = ReportModel.objects.filter(
@@ -221,7 +224,7 @@ def get(request, note_id):
     note_dict["can_edit"] = can_edit
     note_dict["imported"] = False if ontology_id == note.ontology_id else True
     if with_comments:
-        note_dict['comments'] = []
+        note_dict["comments"] = []
         for comment in note.note_comments.all():
             if not comment.active:
                 continue
@@ -230,15 +233,12 @@ def get(request, note_id):
                 reported_object_type="comment", reported_object_id=comment.id
             ).count()
             comment_dict["is_reported"] = True if comment_report_count > 0 else False
-            comment_dict["can_edit"] = _auth.user_can_edit_object(
-                objectModel=NoteCommentModel,
-                object_id=comment.id,
-                role_target_object_id=note.ontology_id,
+            comment_dict["can_edit"] = NoteCommentModel.user_can_edit(
+                comment_id=comment.id, user_id=user_id
             )
             note_dict["comments"].append(comment_dict)
 
     note_list_conditions = {}
-    note_list_conditions["client_ts"] = auth_object_dict["client_ts_id"]
     note_list_conditions["ontology_id"] = ontology_id
     note_list_conditions["visibilities"] = ["public", "internal"]
     note_list_conditions["user_id"] = user_id
@@ -253,19 +253,20 @@ def get(request, note_id):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['POST'])
+@require_http_methods(["POST"])
 def create_comment(request):
     payload = json.loads(request.body)
-    auth_object_dict = get_headers_dict()
-    client_id = get_client_id_from_request()
     note_id = payload["noteId"]
     content = payload["content"]
-    user = UserModel.objects.filter(username=get_username_from_request(), client_ts=client_id).first()
-    auth_object_dict["user_id"] = user.id
-    _auth = Auth(**auth_object_dict)
+    user = UserModel.get_by_username(username=get_username_from_request())
+    if not user:
+        # user is a guest user
+        user_id = -1
+    else:
+        user_id = user.id
 
     note = NoteModel.objects.filter(id=note_id).first()
-    if not note or not note.can_visit(user_id=user.id, client_ts=client_id, is_guest=_auth.user_is_guest()):
+    if not note or not note.can_visit(user_id=user.id, is_guest=(user_id == -1)):
         raise Http404("Note does not exist")
 
     note_comment_record_dict = {
@@ -285,15 +286,19 @@ def create_comment(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['PUT'])
+@require_http_methods(["PUT"])
 def update_comment(request):
     payload = json.loads(request.body)
-    frontend_id = get_client_id_from_request()
     username = get_username_from_request()
     content = payload.get("content")
     comment_id = payload["comment_id"]
     ontology_id = payload["ontology_id"]
-    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
+    user = UserModel.get_by_username(username=username)
+    if not user:
+        # user is a guest user
+        user_id = -1
+    else:
+        user_id = user.id
     updates = {}
     updates["updated_at"] = _time.now()
     add_to_dict_if_value_is_not_none(updates, "content", content)
@@ -302,12 +307,15 @@ def update_comment(request):
     if not comment_to_update:
         raise Http404("Comment does not exist.")
 
-    _auth = Auth(user_id=user.id, client_ts_id=frontend_id)
-    can_edit = _auth.user_can_edit_object(
-        objectModel=NoteCommentModel,
-        object_id=comment_id,
-        role_target_object_id=ontology_id,
-    )
+    can_edit = False
+    for _, value in user.get_user_admin_roles().items():
+        if ontology_id in value:
+            can_edit = True
+            break
+    if not can_edit:
+        can_edit = NoteCommentModel.user_can_edit(
+            comment_id=comment_id, user_id=user_id
+        )
     if not can_edit:
         raise PermissionDenied("Not Authorized")
 
@@ -317,24 +325,28 @@ def update_comment(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['DELETE'])
+@require_http_methods(["DELETE"])
 def delete(request):
     payload = json.loads(request.body)
-    frontend_id = get_client_id_from_request()
     username = get_username_from_request()
     object_id = payload["objectId"]
     object_type = payload["objectType"]
     ontology_id = payload["ontology_id"]
-    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
+    user = UserModel.get_by_username(username=username)
+    user_id = user.id if user else -1
     objectModel = NoteModel
     if object_type != "note":
         objectModel = NoteCommentModel
-    _auth = Auth(user_id=user.id, client_ts_id=frontend_id)
-    can_edit = _auth.user_can_edit_object(
-        objectModel=objectModel,
-        object_id=object_id,
-        role_target_object_id=ontology_id,
-    )
+
+    can_edit = False
+    for _, value in user.get_user_admin_roles().items():
+        if ontology_id in value:
+            can_edit = True
+            break
+    if not can_edit and object_type != "note":
+        can_edit = NoteCommentModel.user_can_edit(comment_id=object_id, user_id=user_id)
+    elif not can_edit:
+        can_edit = NoteModel.user_can_edit(note_id=object_id, user_id=user_id)
 
     if not can_edit:
         raise PermissionDenied("Not Authorized")
@@ -348,19 +360,20 @@ def delete(request):
 
 @error_handler_decorator
 @authentication_required
-@require_http_methods(['PUT'])
+@require_http_methods(["PUT"])
 def update_pin(request):
     payload = json.loads(request.body)
-    auth_object_dict = get_headers_dict()
-    frontend_id = get_client_id_from_request()
     ontology_id = payload.get("ontology")
     note_id = payload.get("note_id")
     pinned = payload.get("pinned")
     username = get_username_from_request()
-    user = UserModel.objects.filter(username=username, client_ts=frontend_id).first()
-    auth_object_dict["user_id"] = user.id
-    auth = Auth(**auth_object_dict)
-    if not auth.is_user_admin_for_entity(ontologyId=ontology_id):
+    user = UserModel.get_by_username(username=username)
+    can_pin = False
+    for _, value in user.get_user_admin_roles().items():
+        if ontology_id in value:
+            can_pin = True
+            break
+    if not can_pin:
         raise PermissionDenied("Not Authorized")
 
     if pinned not in ["true", "false"]:
@@ -368,7 +381,6 @@ def update_pin(request):
 
     pinned = True if pinned == "true" else False
     pinned_notes_conditions = {}
-    pinned_notes_conditions["client_ts"] = auth_object_dict["client_ts_id"]
     pinned_notes_conditions["ontology_id"] = ontology_id
     pinned_notes_conditions["visibilities"] = ["public", "internal"]
     pinned_notes_conditions["user_id"] = user.id
@@ -377,7 +389,9 @@ def update_pin(request):
         "count_of_all_notes"
     ]
     if pinned and existing_pinned_count == int(settings.MAX_PIN_NOTES):
-        return HttpResponseBadRequest("Not possible to pin more notes for this ontology.")
+        return HttpResponseBadRequest(
+            "Not possible to pin more notes for this ontology."
+        )
 
     updates = {"pinned": pinned}
     note_to_update = NoteModel.objects.filter(id=note_id).first()
