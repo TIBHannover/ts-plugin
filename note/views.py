@@ -4,7 +4,6 @@ from user_service.libs.utils import (
     get_int_from_string,
 )
 from user.models import UserModel
-from user.libs.auth import Auth
 from datetime import datetime as _time
 from .models import NoteModel, NoteCommentModel
 from report.models import ReportModel
@@ -151,16 +150,13 @@ def note_list(request):
         page = DEFAULT_NOTE_LIST_PAGE
 
     user = UserModel.get_by_username(username=get_username_from_request())
-    user_id = user.id
-    auth = Auth()
 
     visibilities = ["public"]
-
-    if not auth.user_is_guest():
-        visibilities.append("internal")
-
-    else:
+    if not user:
         user_id = -1
+    else:
+        user_id = user.id
+        visibilities.append("internal")
 
     note_list_conditions = {}
     note_list_conditions["ontology_id"] = ontology_id
