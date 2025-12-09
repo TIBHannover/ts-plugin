@@ -337,31 +337,46 @@ def delete(request):
     ontology_id = payload["ontology_id"]
     user = UserModel.get_by_username(username=username)
     user_id = user.id if user else -1
-    objectModel = NoteModel
     if object_type != "note":
-        objectModel = NoteCommentModel
+        note = NoteModel.objects.filter(id=object_id).first()
+        if not note:
+            raise Http404("Object not found")
+        can_edit = False
+        if note.visibility != "me":
+            # no admin can edit the note if it is a private note
+            for key, value in user.get_user_admin_roles().items():
+                if ontology_id in value:
+                    can_edit = True
+                    break
+                if key == "system" and len(value) > 0:
+                    can_edit = True
+                    break
+        if not can_edit:
+            can_edit = NoteModel.user_can_edit(note_id=object_id, user_id=user_id)
+        if not can_edit:
+            raise PermissionDenied("Not Authorized")
+        note.delete()
+        return create_json_response({"deleted": not note.active})
 
+    comment = NoteCommentModel.objects.filter(id=object_id).first()
+    if not comment:
+        raise Http404("Object not found")
     can_edit = False
-    for key, value in user.get_user_admin_roles().items():
-        if ontology_id in value:
-            can_edit = True
-            break
-        if key == "system" and len(value) > 0:
-            can_edit = True
-            break
-    if not can_edit and object_type != "note":
+    if comment.note.visibility != "me":
+        # no admin can edit the comment if it is a private note
+        for key, value in user.get_user_admin_roles().items():
+            if ontology_id in value:
+                can_edit = True
+                break
+            if key == "system" and len(value) > 0:
+                can_edit = True
+                break
+    if not can_edit:
         can_edit = NoteCommentModel.user_can_edit(comment_id=object_id, user_id=user_id)
-    elif not can_edit:
-        can_edit = NoteModel.user_can_edit(note_id=object_id, user_id=user_id)
-
     if not can_edit:
         raise PermissionDenied("Not Authorized")
-
-    object = objectModel.objects.filter(id=object_id).first()
-    if not object:
-        raise Http404("Object not found")
-    object.delete()
-    return create_json_response({"deleted": not object.active})
+    comment.delete()
+    return create_json_response({"deleted": not comment.active})
 
 
 @error_handler_decorator
