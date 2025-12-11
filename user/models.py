@@ -8,6 +8,8 @@ from django.contrib.auth.hashers import make_password
 
 ALLOWED_ROLES = ["admin"]
 
+# TODO: delete user mechanism
+
 
 class UserModel(models.Model):
     # description,title,api_key,expires_at and owner are only for api key. we treat api key as a user and set the owner to the api key creator.
@@ -47,6 +49,10 @@ class UserModel(models.Model):
             "user_extra": self.user_extra,
             "is_active": self.is_active,
             "is_blocked": self.is_blocked,
+            "description": self.description,
+            "title": self.title,
+            "expires_at": self.expires_at,
+            "owner": self.owner.to_dict() if self.owner else None,
         }
 
     def register_user_if_not_exist(self):

@@ -10,7 +10,7 @@ from user_service.middlewares.request import (
     get_client_id_from_request,
 )
 from user.libs.auth import Auth
-from user.models import UserModel, RoleModel, SearchSettingModel, UserTokenModel
+from user.models import UserModel, RoleModel, SearchSettingModel
 from django.http import Http404, HttpResponseServerError
 from django.views import View
 import json
@@ -18,6 +18,7 @@ from jose import jwt
 import datetime
 from django.conf import settings
 import secrets
+from django.contrib.auth.hashers import make_password
 
 
 @require_http_methods(["GET"])
@@ -88,18 +89,21 @@ def create_api_key(request):
     user = UserModel.get_by_username(username=username)
     token = secrets.token_urlsafe(32)
     token = "apk_" + token
-    api_key_model_record_dict = {
-        "user": user,
-        "name": payload["name"],
+    api_key_user = {
+        "username": "api_" + user.username,
+        "name": payload.get("name", user.name),
+        "auth_provider": "apikey",
+        "client_ts": user.client_ts,
+        "created_at": datetime.datetime.now(),
         "description": payload.get("description", ""),
-        "alt_username": payload.get("alt_username", ""),
-        "token": token,
-        "created_at": "",
+        "title": payload["title"],
+        "api_key": make_password(token),
         "expires_at": payload.get("expires_at", None),
+        "owner": user,
     }
-    api_key_model_object = UserTokenModel(**api_key_model_record_dict)
-    api_key_model_object.save()
-    if not api_key_model_object.id:
+    api_key_user = UserModel(**api_key_user)
+    api_key_user.save()
+    if not api_key_user.id:
         return HttpResponseServerError("Something went wrong.")
 
     return create_json_response({"token": token})
@@ -113,15 +117,15 @@ def update_api_key(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
     api_key_id = payload["id"]
-    api_key = UserTokenModel.objects.filter(id=api_key_id).first()
+    api_key = UserModel.objects.filter(id=api_key_id).first()
     if not api_key:
         raise Http404("API key does not exist.")
-    if api_key.user.id != user.id:
+    if api_key.owner.id != user.id:
         raise Http404("Not authorized")
-    api_key.name = payload.get("name", "")
+    api_key.name = payload.get("name", user.name)
     api_key.description = payload.get("description", "")
-    api_key.alt_username = payload.get("alt_username", "")
     api_key.expires_at = payload.get("expires_at", None)
+    api_key.title = payload.get("title", "")
     api_key.save()
     return create_json_response({"updated": api_key.to_dict()})
 
@@ -134,10 +138,10 @@ def delete_api_key(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
     api_key_id = payload["id"]
-    api_key = UserTokenModel.objects.filter(id=api_key_id).first()
+    api_key = UserModel.objects.filter(id=api_key_id).first()
     if not api_key:
         raise Http404("API key does not exist.")
-    if api_key.user.id != user.id:
+    if api_key.owner.id != user.id:
         raise Http404("Not authorized")
     api_key.delete()
     return create_json_response({"deleted": True})
@@ -149,7 +153,7 @@ def delete_api_key(request):
 def get_api_keys(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
-    api_keys = user.user_api_keys.all()
+    api_keys = UserModel.objects.filter(owner=user).all()
     return create_json_response(
         {"api_keys": [api_key.to_dict() for api_key in api_keys]}
     )
