@@ -18,7 +18,7 @@ DEBUG = env("DEBUG_MODE", default=False)
 
 ALLOWED_HOSTS = ["*"]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
-AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "api"]
+AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
 CORS_ALLOWED_ORIGINS = [

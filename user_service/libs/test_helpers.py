@@ -1,4 +1,4 @@
-from user.models import UserModel, RoleModel, SearchSettingModel
+from user.models import UserModel, RoleModel, SearchSettingModel, UserTokenModel
 from note.models import NoteModel, NoteCommentModel
 from collection.models import CollectionModel
 from term_set.models import TermSetModel, TermsModel
@@ -54,6 +54,20 @@ class TestHelper:
         )
         user_orcid.save()
         return user_orcid
+
+    @staticmethod
+    def createUserApiKey(
+        user: UserModel, name: str, description: str, alt_username: str
+    ) -> UserTokenModel:
+        api_key = UserTokenModel(
+            user=user,
+            name=name,
+            description=description,
+            alt_username=alt_username,
+            expires_at=None,
+        )
+        api_key.save()
+        return api_key
 
     @staticmethod
     def createNote(

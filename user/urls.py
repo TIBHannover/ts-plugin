@@ -17,7 +17,7 @@ urlpatterns = [
         csrf_exempt(views.SearchSettings.as_view()),
         name="search_setting",
     ),
-    path("/apikey/create", views.create_api_key, name="create_api_key"),
+    path("apikey/create", views.create_api_key, name="create_api_key"),
     path("apikey/update/", views.update_api_key, name="update_api_key"),
     path("apikey/delete/", views.delete_api_key, name="delete_api_key"),
     path("apikey/get/", views.get_api_keys, name="get_api_keys"),

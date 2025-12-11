@@ -10,6 +10,7 @@ ALLOWED_ROLES = ["admin"]
 
 
 class UserModel(models.Model):
+    # description,title,api_key,expires_at and owner are only for api key. we treat api key as a user and set the owner to the api key creator.
     username = models.CharField()
     name = models.CharField(blank=True, null=True)
     created_at = models.DateTimeField()
@@ -19,6 +20,13 @@ class UserModel(models.Model):
     user_extra = models.JSONField(blank=True, null=True)
     is_active = models.BooleanField(blank=True, null=True, default=True)
     is_blocked = models.BooleanField(blank=True, null=True, default=False)
+    description = models.CharField(blank=True, null=True)
+    title = models.CharField(blank=True, null=True)
+    api_key = models.CharField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    owner = models.ForeignKey(
+        "self", on_delete=models.CASCADE, related_name="key_owner", null=True
+    )
 
     class Meta:
         db_table = "ts_users"
@@ -128,43 +136,6 @@ class UserModel(models.Model):
         return []
 
 
-class UserTokenModel(models.Model):
-    # for API keys
-    user = models.ForeignKey(
-        UserModel, on_delete=models.CASCADE, related_name="user_api_keys"
-    )
-    created_at = models.DateTimeField()
-    expires_at = models.DateTimeField(null=True)  # null means no expiration
-    token = models.CharField()
-    name = models.CharField(default="")
-    description = models.CharField(blank=True, null=True)
-    alt_username = models.CharField(
-        blank=True, null=True
-    )  # let user publich content with alternative username instead of his username
-
-    class Meta:
-        db_table = "api_keys"
-
-    def save(self, **kwargs):
-        self.token = make_password(self.token)
-        self.created_at = _time.now()
-        super().save(**kwargs)
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "user_id": self.user.id,
-            "name": self.name,
-            "description": self.description,
-            "alt_username": self.alt_username,
-            "created_at": self.created_at,
-            "expires_at": self.expires_at,
-        }
-
-    def __str__(self) -> str:
-        return f"<APIKey {self.user.username} ({self.user.client_ts})>"
-
-
 class RoleModel(models.Model):
     user = models.ForeignKey(
         UserModel, on_delete=models.CASCADE, related_name="user_roles"
@@ -251,3 +222,41 @@ class SearchSettingModel(models.Model):
 
     def __str__(self) -> str:
         return f"<SearchSettingModel {self.id}>"
+
+
+class UserTokenModel(models.Model):
+    # for API keys
+    user = models.ForeignKey(
+        UserModel, on_delete=models.CASCADE, related_name="user_api_keys"
+    )
+    created_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True)  # null means no expiration
+    token = models.CharField()
+    name = models.CharField(default="")
+    description = models.CharField(blank=True, null=True)
+    alt_username = models.CharField(
+        blank=True, null=True
+    )  # let user publich content with alternative username instead of his username
+
+    class Meta:
+        db_table = "api_keys"
+        managed = False  # this model is not used anywhere, so we can disable it
+
+    def save(self, **kwargs):
+        self.token = make_password(self.token)
+        self.created_at = _time.now()
+        super().save(**kwargs)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user.id,
+            "name": self.name,
+            "description": self.description,
+            "alt_username": self.alt_username,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+        }
+
+    def __str__(self) -> str:
+        return f"<APIKey {self.user.username} ({self.user.client_ts})>"
