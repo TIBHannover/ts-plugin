@@ -136,6 +136,11 @@ class UserTokenModel(models.Model):
     created_at = models.DateTimeField()
     expires_at = models.DateTimeField(null=True)  # null means no expiration
     token = models.CharField()
+    name = models.CharField(default="")
+    description = models.CharField(blank=True, null=True)
+    alt_username = models.CharField(
+        blank=True, null=True
+    )  # let user publich content with alternative username instead of his username
 
     class Meta:
         db_table = "api_keys"
