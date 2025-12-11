@@ -23,7 +23,7 @@ def get_client_id_from_request():
 
 
 def get_headers_dict():
-    request = getattr(_current_context, "request", {'headers': {}})
+    request = getattr(_current_context, "request", {"headers": {}})
     return {
         "auth_provider": request.headers.get("X-TS-Auth-Provider"),
         "orcid_id": get_orcid_id_jwt_payload(),
@@ -38,6 +38,14 @@ def get_request_method():
     if request:
         return request.method
     return ""
+
+
+def get_access_token_for_stats():
+    # Authorization token is not jwt format in this particular case. is directly the access token
+    request = getattr(_current_context, "request", None)
+    if request:
+        return request.headers.get("Authorization")
+    return "default"
 
 
 def get_jwt_token_from_request():
