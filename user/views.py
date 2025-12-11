@@ -87,10 +87,10 @@ def create_api_key(request):
     payload = json.loads(request.body)
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
-    token = secrets.token_urlsafe(32)
+    token = secrets.token_hex(32)
     token = "apk_" + token
     api_key_user = {
-        "username": "api_" + user.username,
+        "username": "api_" + secrets.token_urlsafe(32),
         "name": payload.get("name", user.name),
         "auth_provider": "apikey",
         "client_ts": user.client_ts,
@@ -125,7 +125,7 @@ def update_api_key(request):
     api_key.name = payload.get("name", user.name)
     api_key.description = payload.get("description", "")
     api_key.expires_at = payload.get("expires_at", None)
-    api_key.title = payload.get("title", "")
+    api_key.title = payload["title"]
     api_key.save()
     return create_json_response({"updated": api_key.to_dict()})
 

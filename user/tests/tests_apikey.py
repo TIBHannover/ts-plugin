@@ -11,9 +11,9 @@ class TestApiKey(TestCase, BaseTest):
     def setUpTestData(self) -> None:
         self.user = TestHelper.createGitHubUser()
         self.other_user = TestHelper.createOrcidUser()
-        self.existing_api_key = TestHelper.createUserApiKey(
+        self.existing_api_key = TestHelper.createApiKeyUser(
             user=self.user,
-            name="project_u"
+            name="project_u",
             title="existing api key",
             description="this is existing api key",
         )
@@ -64,7 +64,7 @@ class TestApiKey(TestCase, BaseTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["_result"]["token"].startswith("apk_"))
-        self.assertEqual(len(response.json()["_result"]["token"]), 36)
+        self.assertEqual(len(response.json()["_result"]["token"]), 68)  # api_ + 32 hex
 
     def test_api_key_update_should_fail_for_guest(self):
         headers = copy.copy(self.guest_request_headers)
@@ -76,7 +76,7 @@ class TestApiKey(TestCase, BaseTest):
             data=json.dumps(data),
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 401)
 
     def test_api_key_update_should_fail_for_non_owner_user(self):
         headers = copy.copy(self.orcid_request_headers)
@@ -177,4 +177,6 @@ class TestApiKey(TestCase, BaseTest):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["_result"]["api_keys"]), 1)
-        self.assertEqual(response.json()["_result"]["api_keys"][0]["owner"]["id"], self.user.id)
+        self.assertEqual(
+            response.json()["_result"]["api_keys"][0]["owner"]["id"], self.user.id
+        )
