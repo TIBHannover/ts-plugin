@@ -7,6 +7,8 @@ from datetime import datetime as _time
 import datetime
 import uuid
 from jose import jwt, JWTError
+import secrets
+from django.contrib.auth.hashers import make_password
 
 
 class TestHelper:
@@ -56,15 +58,21 @@ class TestHelper:
         return user_orcid
 
     @staticmethod
-    def createUserApiKey(
-        user: UserModel, name: str, description: str, alt_username: str
-    ) -> UserTokenModel:
-        api_key = UserTokenModel(
-            user=user,
+    def createApiKeyUser(
+        user: UserModel, name: str, description: str, title: str
+    ) -> UserModel:
+        api_key = UserModel(
+            username="api_" + user.username,
             name=name,
+            auth_provider="apikey",
+            client_ts=user.client_ts,
+            created_at=_time.now(),
             description=description,
-            alt_username=alt_username,
+            title=title,
+            api_key=make_password(secrets.token_urlsafe(32)),
             expires_at=None,
+            owner=user,
+            user_extra={},
         )
         api_key.save()
         return api_key

@@ -13,21 +13,21 @@ class TestApiKey(TestCase, BaseTest):
         self.other_user = TestHelper.createOrcidUser()
         self.existing_api_key = TestHelper.createUserApiKey(
             user=self.user,
-            name="existing api key",
+            name="project_u"
+            title="existing api key",
             description="this is existing api key",
-            alt_username="existing_api_key",
         )
 
         self.keydata = {
-            "name": "Test API Key",
+            "name": "project_x",
+            "title": "Test API Key",
             "description": "this is a test API Key",
-            "alt_username": "test_api_key",
             "expires_at": None,
         }
         self.update_keydata = {
-            "name": "updated Test API Key",
+            "name": "project_name_updated",
+            "title": "updated Test API Key",
             "description": "this is the updated test API Key",
-            "alt_username": "updated_test_api_key",
             "expires_at": None,
         }
         self.url = "/user/apikey/"
@@ -42,10 +42,10 @@ class TestApiKey(TestCase, BaseTest):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_api_key_creation_should_fail_without_name(self):
+    def test_api_key_creation_should_fail_without_title(self):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.keydata)
-        data.pop("name")
+        data.pop("title")
         response = self.client.post(
             self.url + "create/",
             headers=headers,
@@ -90,11 +90,11 @@ class TestApiKey(TestCase, BaseTest):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_api_key_update_should_fail_without_name(self):
+    def test_api_key_update_should_fail_without_title(self):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.update_keydata)
         data["id"] = self.existing_api_key.id
-        data.pop("name")
+        data.pop("title")
         response = self.client.put(
             self.url + "update/",
             headers=headers,
@@ -117,3 +117,64 @@ class TestApiKey(TestCase, BaseTest):
         self.assertEqual(
             response.json()["_result"]["updated"]["name"], self.update_keydata["name"]
         )
+
+    def test_api_key_deletion_should_fail_for_guest(self):
+        headers = copy.copy(self.guest_request_headers)
+        response = self.client.delete(
+            self.url + "delete/",
+            headers=headers,
+            data=json.dumps({"id": self.existing_api_key.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_api_key_deletion_should_fail_for_non_owner_user(self):
+        headers = copy.copy(self.orcid_request_headers)
+        response = self.client.delete(
+            self.url + "delete/",
+            headers=headers,
+            data=json.dumps({"id": self.existing_api_key.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_api_key_deletion_should_success(self):
+        headers = copy.copy(self.github_request_headers)
+        response = self.client.delete(
+            self.url + "delete/",
+            headers=headers,
+            data=json.dumps({"id": self.existing_api_key.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["_result"]["deleted"], True)
+
+    def test_api_key_list_should_fail_for_guest(self):
+        headers = copy.copy(self.guest_request_headers)
+        response = self.client.get(
+            self.url + "get/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_api_key_list_should_contains_nothing_for_orcid_user(self):
+        headers = copy.copy(self.orcid_request_headers)
+        response = self.client.get(
+            self.url + "get/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["_result"]["api_keys"]), 0)
+
+    def test_api_key_list_should_contains_one_key_for_github_user(self):
+        headers = copy.copy(self.github_request_headers)
+        response = self.client.get(
+            self.url + "get/",
+            headers=headers,
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["_result"]["api_keys"]), 1)
+        self.assertEqual(response.json()["_result"]["api_keys"][0]["owner"]["id"], self.user.id)
