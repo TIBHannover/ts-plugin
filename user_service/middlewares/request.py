@@ -39,6 +39,14 @@ def get_request_method():
     return ""
 
 
+def get_access_token_for_stats():
+    # Authorization token is not jwt format in this particular case. is directly the access token
+    request = getattr(_current_context, "request", None)
+    if request:
+        return request.headers.get("Authorization")
+    return "default"
+
+
 def get_jwt_token_from_request():
     request = getattr(_current_context, "request", None)
     auth_header = request.headers.get("Authorization", "not_exist")

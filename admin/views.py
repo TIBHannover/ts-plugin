@@ -19,6 +19,7 @@ from django.http import Http404
 import urllib.parse
 import requests
 from django.http import JsonResponse
+from user_service.middlewares.request import get_access_token_for_stats
 
 
 @error_handler_decorator
@@ -63,7 +64,7 @@ def get_stats(request):
     args = request.GET
     project_id = args.get("project_id")
     header = get_headers_dict()
-    if settings.STATS_API_TOKEN != header.get("access_token", "default"):
+    if settings.STATS_API_TOKEN != get_access_token_for_stats():
         raise Http404("not found")
 
     headers = {
