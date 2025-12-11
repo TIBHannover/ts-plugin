@@ -147,7 +147,19 @@ class UserTokenModel(models.Model):
 
     def save(self, **kwargs):
         self.token = make_password(self.token)
+        self.created_at = _time.now()
         super().save(**kwargs)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user.id,
+            "name": self.name,
+            "description": self.description,
+            "alt_username": self.alt_username,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+        }
 
     def __str__(self) -> str:
         return f"<APIKey {self.user.username} ({self.user.client_ts})>"

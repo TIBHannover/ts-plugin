@@ -10,13 +10,14 @@ from user_service.middlewares.request import (
     get_client_id_from_request,
 )
 from user.libs.auth import Auth
-from user.models import UserModel, RoleModel, SearchSettingModel
-from django.http import Http404
+from user.models import UserModel, RoleModel, SearchSettingModel, UserTokenModel
+from django.http import Http404, HttpResponseServerError
 from django.views import View
 import json
 from jose import jwt
 import datetime
 from django.conf import settings
+import secrets
 
 
 @require_http_methods(["GET"])
@@ -76,6 +77,82 @@ def validate_login(request):
     auth = Auth(**auth_object_dict)
     auth.abort_if_not_authenticated()
     return create_json_response({"valid": True})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["POST"])
+def create_api_key(request):
+    payload = json.loads(request.body)
+    username = get_username_from_request()
+    user = UserModel.get_by_username(username=username)
+    token = secrets.token_urlsafe(32)
+    token = "apk_" + token
+    api_key_model_record_dict = {
+        "user": user,
+        "name": payload["name"],
+        "description": payload.get("description", ""),
+        "alt_username": payload.get("alt_username", ""),
+        "token": token,
+        "created_at": "",
+        "expires_at": payload.get("expires_at", None),
+    }
+    api_key_model_object = UserTokenModel(**api_key_model_record_dict)
+    api_key_model_object.save()
+    if not api_key_model_object.id:
+        return HttpResponseServerError("Something went wrong.")
+
+    return create_json_response({"token": token})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["PUT"])
+def update_api_key(request):
+    payload = json.loads(request.body)
+    username = get_username_from_request()
+    user = UserModel.get_by_username(username=username)
+    api_key_id = payload["id"]
+    api_key = UserTokenModel.objects.filter(id=api_key_id).first()
+    if not api_key:
+        raise Http404("API key does not exist.")
+    if api_key.user.id != user.id:
+        raise Http404("Not authorized")
+    api_key.name = payload.get("name", "")
+    api_key.description = payload.get("description", "")
+    api_key.alt_username = payload.get("alt_username", "")
+    api_key.expires_at = payload.get("expires_at", None)
+    api_key.save()
+    return create_json_response({"updated": api_key.to_dict()})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["DELETE"])
+def delete_api_key(request):
+    payload = json.loads(request.body)
+    username = get_username_from_request()
+    user = UserModel.get_by_username(username=username)
+    api_key_id = payload["id"]
+    api_key = UserTokenModel.objects.filter(id=api_key_id).first()
+    if not api_key:
+        raise Http404("API key does not exist.")
+    if api_key.user.id != user.id:
+        raise Http404("Not authorized")
+    api_key.delete()
+    return create_json_response({"deleted": True})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["GET"])
+def get_api_keys(request):
+    username = get_username_from_request()
+    user = UserModel.get_by_username(username=username)
+    api_keys = user.user_api_keys.all()
+    return create_json_response(
+        {"api_keys": [api_key.to_dict() for api_key in api_keys]}
+    )
 
 
 @error_handler_decorator
