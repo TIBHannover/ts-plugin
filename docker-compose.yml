@@ -8,8 +8,8 @@ services:
     #   - 5123:5432
     env_file:
       - .db.env
-    # volumes:
-    # - ../pData:/var/lib/postgresql/data
+    volumes:
+      - ../pData:/var/lib/postgresql/data
 
     healthcheck:
       test:
@@ -33,8 +33,8 @@ services:
       - microservice
     links:
       - db
-    volumes:
-      - ./:/home/ts-app
+    # volumes:
+    # - ./:/home/ts-app
 
   nginx:
     container_name: nginx
