@@ -78,7 +78,7 @@ def login(request):
             value=jwt_token,
             httponly=True,
             secure=not settings.DEBUG,
-            samesite="Lax",
+            samesite=None,
             max_age=30 * 24 * 60 * 60,
         )
         return response
