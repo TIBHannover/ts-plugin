@@ -86,6 +86,15 @@ def login(request):
 
 
 @error_handler_decorator
+@authentication_required
+@require_http_methods(["GET"])
+def logout(request):
+    response = JsonResponse({"_result": "logged out"})
+    response.delete_cookie("jwt")
+    return response
+
+
+@error_handler_decorator
 @require_http_methods(["GET"])
 def validate_login(request):
     auth_object_dict = get_headers_dict()
