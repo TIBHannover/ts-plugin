@@ -18,13 +18,13 @@ from user_service.middlewares.request import get_username_from_request
 
 class Auth:
     def __init__(
-            self,
-            code: Optional[str] = None,
-            auth_provider: Optional[str] = None,
-            orcid_id: Optional[str] = None,
-            client_ts_id: Optional[str] = None,
-            client_ts_token: Optional[str] = None,
-            user_id: Union[int, str, None] = None
+        self,
+        code: Optional[str] = None,
+        auth_provider: Optional[str] = None,
+        orcid_id: Optional[str] = None,
+        client_ts_id: Optional[str] = None,
+        client_ts_token: Optional[str] = None,
+        user_id: Union[int, str, None] = None,
     ) -> None:
         auth_object_dict = get_headers_dict()
         self.code = code or auth_object_dict["code"]
@@ -34,7 +34,9 @@ class Auth:
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
         self.client_ts_token = client_ts_token or auth_object_dict["client_ts_token"]
         if not user_id:
-            userId = UserModel.get_user_id_by_username(username=get_username_from_request())
+            userId = UserModel.get_user_id_by_username(
+                username=get_username_from_request()
+            )
             self.user_id = userId
         else:
             self.user_id = user_id
@@ -108,15 +110,15 @@ class Auth:
 
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
         if not self.client_ts_id or self.client_ts_id not in getattr(
-                settings, "CLIENT_TERMINOLOGY_SERVICES", []
+            settings, "CLIENT_TERMINOLOGY_SERVICES", []
         ):
             raise PermissionDenied(
                 "Client application is not allowed to use this service."
             )
 
         if (
-                not self.client_ts_token
-                or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
+            not self.client_ts_token
+            or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
         ):
             raise PermissionDenied(
                 "Client application is not allowed to use this service."
@@ -126,7 +128,7 @@ class Auth:
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
         if not self.auth_provider or self.auth_provider not in getattr(
-                settings, "AUTH_PROVIDERS", []
+            settings, "AUTH_PROVIDERS", []
         ):
             raise PermissionDenied("auth provider is not clear")
         return True
@@ -147,12 +149,12 @@ class Auth:
         token = get_jwt_token_from_request()
         try:
             jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        except JWTError:
+        except:
             raise PermissionDenied("Not Authorized user token")
         return True
 
     def is_user_admin_for_entity(
-            self, ontologyId: str, collectionId: Optional[str] = None
+        self, ontologyId: str, collectionId: Optional[str] = None
     ) -> bool:
         system_admin = RoleModel.objects.filter(
             user__id=self.user_id,
@@ -200,10 +202,10 @@ class Auth:
         return False
 
     def user_can_edit_object(
-            self,
-            objectModel: IEditableModelObj,
-            object_id: Union[int, str],
-            role_target_object_id: str = "",
+        self,
+        objectModel: IEditableModelObj,
+        object_id: Union[int, str],
+        role_target_object_id: str = "",
     ) -> bool:
         if not self.user_id:
             return False
@@ -212,8 +214,8 @@ class Auth:
 
         visibility = objectModel.get_visibility(object_id)
         if (
-                self.is_user_admin_for_entity(ontologyId=role_target_object_id)
-                and visibility != "me"
+            self.is_user_admin_for_entity(ontologyId=role_target_object_id)
+            and visibility != "me"
         ):
             return True
 
@@ -225,7 +227,7 @@ class Auth:
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             return payload
-        except JWTError:
+        except:
             return {}
 
     @staticmethod
@@ -235,5 +237,5 @@ class Auth:
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             return payload["token"]
-        except JWTError:
+        except:
             return ""

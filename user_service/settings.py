@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import environ
 import os
@@ -17,33 +16,32 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG_MODE", default=False)
 
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.service.tib.eu']
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", ".service.tib.eu"]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:8080',
-    'http://localhost',
-    'http://127.0.0.1:3000',
-    'http://ols02.develop.service.tib.eu',
-    'https://terminology.nfdi4chem.de',
-    'https://terminology.nfdi4ing.de',
-    'https://terminology.tib.eu',
-    'http://ols03.develop.service.tib.eu',
-    'https://service.tib.eu'
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://localhost",
+    "http://127.0.0.1:3000",
+    "http://ols02.develop.service.tib.eu",
+    "https://terminology.nfdi4chem.de",
+    "https://terminology.nfdi4ing.de",
+    "https://terminology.tib.eu",
+    "http://ols03.develop.service.tib.eu",
+    "https://service.tib.eu",
 ]
 
-CSRF_TRUSTED_ORIGINS=[
-    'https://service.tib.eu',
-    'http://localhost:3000',
-    'http://localhost'
+CSRF_TRUSTED_ORIGINS = [
+    "https://service.tib.eu",
+    "http://localhost:3000",
+    "http://localhost",
 ]
 
-CORS_ALLOW_METHODS = (
-    *default_methods,
-)
+CORS_ALLOW_METHODS = (*default_methods,)
 
 CORS_ALLOW_HEADERS = (
     *default_headers,
@@ -55,6 +53,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-Orcid-Id",
     "X-TS-User-Token",
     "X-TS-User-Name",
+    "X-CSRF-Token",
 )
 
 
@@ -77,21 +76,20 @@ INSTALLED_APPS = [
     "collection",
     "admin.apps.AdminConfig",
     "admin_cli",
-    "term_set"
-
+    "term_set",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "user_service.middlewares.request.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    'user_service.middlewares.cache.DisableCacheMiddleware',
+    "user_service.middlewares.cache.DisableCacheMiddleware",
 ]
 
 ROOT_URLCONF = "user_service.urls"
@@ -115,7 +113,6 @@ TEMPLATES = [
 WSGI_APPLICATION = "user_service.wsgi.application"
 
 
-
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -126,7 +123,6 @@ DATABASES = {
         "PORT": env("DB_PORT"),
     }
 }
-
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -143,7 +139,6 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
-
 
 
 LANGUAGE_CODE = "en-us"
@@ -219,4 +214,3 @@ ORCID_USER_TS_TOKEN = env("ORCID_USER_TS_TOKEN", default=None)
 GITHUB_LOGIN_CODE = env("GITHUB_LOGIN_CODE", default=None)
 ORCID_LOGIN_CODE = env("ORCID_LOGIN_CODE", default=None)
 STATS_API_TOKEN = env("STATS_API_TOKEN", default=None)
-

@@ -1,5 +1,4 @@
-
-version: '3.0'
+version: "3.0"
 services:
   db:
     image: postgres:15
@@ -8,33 +7,34 @@ services:
     # ports:
     #   - 5123:5432
     env_file:
-      - .db.env    
-    volumes:
-      - ../pData:/var/lib/postgresql/data
+      - .db.env
+    # volumes:
+    # - ../pData:/var/lib/postgresql/data
 
-    healthcheck:      
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -t 1"]
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -t 1"]
       interval: 30s
       timeout: 60s
       retries: 10
       start_period: 60s
     networks:
       - microservice
-    
+
   ts-plugin:
     container_name: ts-plugin
     build:
       context: .
-      dockerfile: docker/Dockerfile    
+      dockerfile: docker/Dockerfile
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - microservice      
-    links: 
-        - db
+      - microservice
+    links:
+      - db
     volumes:
-      - ./term_set:/home/ts-app/term_set
+      - ./:/home/ts-app
 
   nginx:
     container_name: nginx
@@ -44,12 +44,11 @@ services:
     links:
       - ts-plugin
     ports:
-      - "0.0.0.0:80:80"         
+      - "0.0.0.0:80:80"
     networks:
       - microservice
     volumes:
       - ./staticfiles:/staticfiles
-
 
 networks:
   microservice:
