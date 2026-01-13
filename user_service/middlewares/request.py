@@ -1,5 +1,5 @@
 import threading
-from jose import jwt, JWTError
+from jose import jwt
 from django.conf import settings
 
 _current_context = threading.local()
@@ -49,10 +49,8 @@ def get_access_token_for_stats():
 
 def get_jwt_token_from_request():
     request = getattr(_current_context, "request", None)
-    auth_header = request.headers.get("Authorization", "not_exist")
-    if "Bearer" not in auth_header:
-        return ""
-    return auth_header.split("Bearer ")[1]
+    token = request.COOKIES.get("jwt")
+    return token
 
 
 def get_orcid_id_jwt_payload():
@@ -60,7 +58,7 @@ def get_orcid_id_jwt_payload():
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         return payload.get("orcid_id", "")
-    except JWTError:
+    except:
         return ""
 
 
@@ -69,14 +67,18 @@ def get_username_from_request():
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         return payload.get("ts_username", "")
-    except JWTError:
+    except:
         return ""
 
 
-def get_user_id_from_request():
-    token = get_jwt_token_from_request()
+def is_csrf_valid():
+    request = getattr(_current_context, "request", None)
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not csrf_token:
+        return False
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        return payload.get("id", "")
-    except JWTError:
-        return ""
+        payload = jwt.decode(csrf_token, settings.SECRET_KEY, algorithms=["HS256"])
+        csrf_token = payload.get("csrf")
+        return True if csrf_token else False
+    except:
+        return False

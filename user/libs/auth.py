@@ -21,6 +21,7 @@ class Auth:
         auth_provider: Optional[str] = None,
         orcid_id: Optional[str] = None,
         client_ts_id: Optional[str] = None,
+        client_ts_token: Optional[str] = None,
         user_id: Union[int, str, None] = None,
     ) -> None:
         auth_object_dict = get_headers_dict()
@@ -96,6 +97,24 @@ class Auth:
         except:
             return True
 
+    def abort_if_client_app_not_valid(self) -> Optional[bool]:
+        if not self.client_ts_id or self.client_ts_id not in getattr(
+            settings, "CLIENT_TERMINOLOGY_SERVICES", []
+        ):
+            raise PermissionDenied(
+                "Client application is not allowed to use this service."
+            )
+
+        if (
+            not self.client_ts_token
+            or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
+        ):
+            raise PermissionDenied(
+                "Client application is not allowed to use this service."
+            )
+
+        return True
+
     def abort_if_not_auth_provider(self) -> Optional[bool]:
         if not self.auth_provider or self.auth_provider not in getattr(
             settings, "AUTH_PROVIDERS", []
@@ -119,9 +138,77 @@ class Auth:
         token = get_jwt_token_from_request()
         try:
             jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        except JWTError:
+        except:
             raise PermissionDenied("Not Authorized user token")
         return True
+
+    def is_user_admin_for_entity(
+        self, ontologyId: str, collectionId: Optional[str] = None
+    ) -> bool:
+        system_admin = RoleModel.objects.filter(
+            user__id=self.user_id,
+            target_object_id="system",
+            target_object_type="system",
+            client_ts=self.client_ts_id,
+        ).first()
+        if system_admin:
+            # system admins are admin for all entities.
+            return True
+
+        if collectionId:
+            # if the request is to check the collection admin status for a user.
+            collectio_admin = RoleModel.objects.filter(
+                user__id=self.user_id,
+                target_object_id=collectionId,
+                target_object_type="collection",
+                client_ts=self.client_ts_id,
+            ).first()
+            if collectio_admin:
+                return True
+
+        if ontologyId:
+            ontology_admin = RoleModel.objects.filter(
+                user__id=self.user_id,
+                target_object_id=ontologyId,
+                target_object_type="ontology",
+                client_ts=self.client_ts_id,
+            )
+            if ontology_admin:
+                return True
+
+            # if the user is not ontology admin directly, check if the user is the collection admin that contains that ontology.
+            collections = fetch_ontology_collections(ontologyId)
+            for col in collections:
+                collectio_admin = RoleModel.objects.filter(
+                    user__id=self.user_id,
+                    target_object_id=col,
+                    target_object_type="collection",
+                    client_ts=self.client_ts_id,
+                ).first()
+                if collectio_admin:
+                    return True
+
+        return False
+
+    def user_can_edit_object(
+        self,
+        objectModel: IEditableModelObj,
+        object_id: Union[int, str],
+        role_target_object_id: str = "",
+    ) -> bool:
+        if not self.user_id:
+            return False
+        if objectModel.user_can_edit(object_id, self.user_id):
+            return True
+
+        visibility = objectModel.get_visibility(object_id)
+        if (
+            self.is_user_admin_for_entity(ontologyId=role_target_object_id)
+            and visibility != "me"
+        ):
+            return True
+
+        return False
 
     @staticmethod
     def get_jwt_token_payload():
@@ -129,7 +216,7 @@ class Auth:
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             return payload
-        except JWTError:
+        except:
             return {}
 
     @staticmethod
@@ -139,5 +226,5 @@ class Auth:
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             return payload["token"]
-        except JWTError:
+        except:
             return ""

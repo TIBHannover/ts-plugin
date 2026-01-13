@@ -1,3 +1,4 @@
+import secrets
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required,
@@ -19,6 +20,7 @@ import datetime
 from django.conf import settings
 import secrets
 from django.contrib.auth.hashers import make_password
+from django.http import JsonResponse
 
 
 @require_http_methods(["GET"])
@@ -60,12 +62,39 @@ def login(request):
         auth_response_dict["settings"] = user.user_extra
         auth_response_dict["id"] = user.id
         expires = _time.now(datetime.UTC) + datetime.timedelta(24 * 60 * 7)  # a week
-        auth_object_dict["exp"] = expires
+        auth_response_dict["exp"] = expires
         jwt_token = jwt.encode(
             auth_response_dict, settings.SECRET_KEY, algorithm="HS256"
         )
-        return create_json_response(jwt_token)
+
+        csrf_token = jwt.encode(
+            {"csrf": secrets.token_urlsafe(32)},
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
+        auth_response_dict["csrf_token"] = csrf_token
+        # remove the token from the payload since we handle it in the cookie
+        auth_response_dict.pop("token", None)
+        response = JsonResponse({"_result": auth_response_dict})
+        response.set_cookie(
+            key="jwt",
+            value=jwt_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite=None,
+            max_age=30 * 24 * 60 * 60,
+        )
+        return response
     return create_json_response({"issue": "auth is rejected"})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["GET"])
+def logout(request):
+    response = JsonResponse({"_result": "logged out"})
+    response.delete_cookie("jwt")
+    return response
 
 
 @error_handler_decorator

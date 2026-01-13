@@ -137,7 +137,6 @@ def check_onto_purl_is_valid(request):
             {"valid": False, "reason": "PURL is not a resolvable URL"}
         )
     content_type = response.headers.get("Content-Type")
-    print("conten-type: " + content_type, flush=True)
     allowed_types = [
         "text/turtle",
         "application/x-turtle",

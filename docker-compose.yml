@@ -34,7 +34,7 @@ services:
     links:
       - db
     # volumes:
-      # - ./user:/home/ts-app/user
+    # - ./:/home/ts-app
 
   nginx:
     container_name: nginx

@@ -16,11 +16,12 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG_MODE", default=False)
 
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", ".service.tib.eu"]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8080",
@@ -52,6 +53,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-Orcid-Id",
     "X-TS-User-Token",
     "X-TS-User-Name",
+    "X-CSRF-Token",
 )
 
 
@@ -78,10 +80,10 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "user_service.middlewares.request.RequestMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
