@@ -8,8 +8,9 @@ from user.models import UserModel
 from typing import Optional, Union
 from django.core.exceptions import PermissionDenied, BadRequest
 from django.conf import settings
+from user_service.interfaces.i_editable_model_obj import IEditableModelObj
 from user_service.middlewares.request import get_headers_dict
-from jose import jwt, JWTError
+from jose import jwt
 from user_service.middlewares.request import get_jwt_token_from_request
 from user_service.middlewares.request import get_username_from_request
 
