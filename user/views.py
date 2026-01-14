@@ -135,7 +135,7 @@ def create_api_key(request):
     if not api_key_user.id:
         return HttpResponseServerError("Something went wrong.")
 
-    return create_json_response({"token": token})
+    return create_json_response({"token": token, "api_key": api_key_user.to_dict()})
 
 
 @error_handler_decorator
