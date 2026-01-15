@@ -1,6 +1,9 @@
 import threading
 from jose import jwt
 from django.conf import settings
+from user.models import UserModel
+from django.core.exceptions import PermissionDenied
+from user_service.libs.utils import make_hash
 
 _current_context = threading.local()
 
@@ -47,6 +50,15 @@ def get_access_token_for_stats():
     return "default"
 
 
+def get_api_key_from_request():
+    request = getattr(_current_context, "request", None)
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("apk_"):
+            return auth_header
+    return ""
+
+
 def get_jwt_token_from_request():
     request = getattr(_current_context, "request", None)
     token = request.COOKIES.get("jwt")
@@ -63,6 +75,16 @@ def get_orcid_id_jwt_payload():
 
 
 def get_username_from_request():
+    api_key = get_api_key_from_request()
+    if api_key:
+        # this is an api call
+        print(make_hash(api_key))
+        user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
+        if user:
+            return user.username
+        else:
+            raise PermissionDenied("Invalid API key")
+
     token = get_jwt_token_from_request()
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])

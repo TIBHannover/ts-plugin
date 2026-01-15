@@ -1,7 +1,7 @@
 from user_service.libs.decorators import error_handler_decorator
 import requests
 import urllib.parse
-from user_service.middlewares.request import get_client_id_from_request
+from user_service.middlewares.client_id import get_client_id_from_request
 from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
 from django.http import HttpResponseBadRequest, HttpResponseServerError

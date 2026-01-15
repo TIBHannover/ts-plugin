@@ -13,8 +13,8 @@ from user_service.libs.utils import get_frontend_base_url
 from user_service.middlewares.request import (
     get_headers_dict,
     get_username_from_request,
-    get_client_id_from_request,
 )
+from user_service.middlewares.client_id import get_client_id_from_request
 from django.views.decorators.http import require_http_methods
 import json
 from django.core.exceptions import PermissionDenied

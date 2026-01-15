@@ -2,7 +2,7 @@ from django.db import models
 from user.models import UserModel
 from typing import Union
 from report.models import ReportModel
-from user_service.middlewares.request import get_client_id_from_request
+from user_service.middlewares.client_id import get_client_id_from_request
 
 VISIBILITIES_VALUES = ["me", "internal", "public"]
 SC_TYPES = ["ontology", "class", "property", "individual"]

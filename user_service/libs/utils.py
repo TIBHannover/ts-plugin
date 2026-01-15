@@ -1,9 +1,10 @@
 from django.http import JsonResponse
 from django.conf import settings
 import requests
-from user_service.middlewares.request import get_client_id_from_request
+from user_service.middlewares.client_id import get_client_id_from_request
 from typing import Any, Optional
 import uuid
+import hashlib
 
 
 def create_json_response(response_dict):
@@ -52,3 +53,7 @@ def is_valid_uuid(id: any) -> bool:
         return True
     except:
         return False
+
+
+def make_hash(string: str) -> str:
+    return hashlib.sha256((settings.SECRET_KEY + string).encode()).hexdigest()

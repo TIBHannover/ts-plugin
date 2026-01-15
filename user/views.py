@@ -8,8 +8,8 @@ from django.views.decorators.http import require_http_methods
 from user_service.middlewares.request import (
     get_headers_dict,
     get_username_from_request,
-    get_client_id_from_request,
 )
+from user_service.middlewares.client_id import get_client_id_from_request
 from user.libs.auth import Auth
 from user.models import UserModel, RoleModel, SearchSettingModel
 from django.http import Http404, HttpResponseServerError
@@ -19,8 +19,8 @@ from jose import jwt
 import datetime
 from django.conf import settings
 import secrets
-from django.contrib.auth.hashers import make_password
 from django.http import JsonResponse
+from user_service.libs.utils import make_hash
 
 
 @require_http_methods(["GET"])
@@ -126,7 +126,7 @@ def create_api_key(request):
         "created_at": datetime.datetime.now(),
         "description": payload.get("description", ""),
         "title": payload["title"],
-        "api_key": make_password(token),
+        "api_key": make_hash(token),
         "expires_at": payload.get("expires_at", None),
         "owner": user,
     }

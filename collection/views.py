@@ -9,8 +9,8 @@ from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
 from user_service.middlewares.request import (
     get_username_from_request,
-    get_client_id_from_request,
 )
+from user_service.middlewares.client_id import get_client_id_from_request
 from django.http import HttpResponseBadRequest, Http404
 import json
 

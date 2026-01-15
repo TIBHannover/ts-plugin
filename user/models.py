@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from typing import Optional, Union
-from user_service.middlewares.request import get_client_id_from_request
+from user_service.middlewares.client_id import get_client_id_from_request
 from datetime import datetime as _time
 from django.contrib.auth.hashers import make_password
 
@@ -231,7 +231,7 @@ class SearchSettingModel(models.Model):
 
 
 class UserTokenModel(models.Model):
-    # for API keys
+    # !!Attention: This model is not used anymore!!
     user = models.ForeignKey(
         UserModel, on_delete=models.CASCADE, related_name="user_api_keys"
     )

@@ -5,15 +5,26 @@ from user_service.middlewares.request import (
     get_headers_dict,
     get_request_method,
     get_username_from_request,
+    get_api_key_from_request,
 )
 from user.models import UserModel
 from user.libs.auth import Auth
 from user_service.middlewares.request import is_csrf_valid
+from user_service.libs.utils import make_hash
 
 
 def authentication_required(func):
     def wrapper(*args, **kwargs):
         if get_request_method() != "OPTIONS":
+            api_key = get_api_key_from_request()
+            if api_key:
+                # this is an api call
+                user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
+                if user:
+                    return func(*args, **kwargs)
+                else:
+                    raise PermissionDenied("Not Authorized")
+
             auth_object_dict = get_headers_dict()
             user_id = UserModel.get_user_id_by_username(
                 username=get_username_from_request()
