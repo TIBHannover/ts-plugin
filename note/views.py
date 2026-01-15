@@ -208,7 +208,7 @@ def get(request, note_id):
         user_id = user.id
     auth_object_dict["user_id"] = user_id
 
-    note = NoteModel.objects.filter(id=note_id).first()
+    note = NoteModel.objects.filter(id=note_id, active=True).first()
     if not note:
         raise Http404("Note does not exist")
 
