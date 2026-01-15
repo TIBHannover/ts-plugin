@@ -20,11 +20,11 @@ def authentication_required(func):
             if api_key:
                 # this is an api call
                 user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
+                print(user, flush=True)
                 if user:
                     return func(*args, **kwargs)
                 else:
                     raise PermissionDenied("Not Authorized")
-
             auth_object_dict = get_headers_dict()
             user_id = UserModel.get_user_id_by_username(
                 username=get_username_from_request()
