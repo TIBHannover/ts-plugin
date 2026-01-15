@@ -117,7 +117,7 @@ def create_api_key(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
     token = secrets.token_hex(32)
-    token = "apk_" + token
+    token = "apk_" + user.client_ts + "_" + token
     api_key_user = {
         "username": "api_" + secrets.token_urlsafe(32),
         "name": payload.get("name", user.name),

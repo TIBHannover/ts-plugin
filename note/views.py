@@ -337,7 +337,7 @@ def delete(request):
     ontology_id = payload["ontology_id"]
     user = UserModel.get_by_username(username=username)
     user_id = user.id if user else -1
-    if object_type != "note":
+    if object_type == "note":
         note = NoteModel.objects.filter(id=object_id).first()
         if not note:
             raise Http404("Object not found")

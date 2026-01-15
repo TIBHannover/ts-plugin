@@ -40,6 +40,7 @@ class NoteModel(models.Model):
             "visibility": self.visibility,
             "created_by": UserModel.get_user_name_by_id(self.creator.id),
             "pinned": self.pinned,
+            "active": self.active,
             "parent_ontology": self.parent_ontology_id,
         }
 

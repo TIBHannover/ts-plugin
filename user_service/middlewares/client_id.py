@@ -15,6 +15,10 @@ class ClientIdMiddleware:
 
 def get_client_id_from_request():
     request = getattr(_current_context, "request", None)
+    api_key = request.headers.get("Authorization")
+    if api_key and api_key.startswith("apk_"):
+        # this is an api call. the client ts id is embedded in the api key
+        return api_key.split("_")[1]
     if request:
         return request.headers.get("X-TS-Frontend-Id")
     return ""

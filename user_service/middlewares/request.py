@@ -78,7 +78,6 @@ def get_username_from_request():
     api_key = get_api_key_from_request()
     if api_key:
         # this is an api call
-        print(make_hash(api_key))
         user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
         if user:
             return user.username
