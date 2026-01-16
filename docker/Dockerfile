@@ -47,6 +47,7 @@ ENV PATH "$PATH:/home/${USERNAME}/.local/bin"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1 
 
+RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

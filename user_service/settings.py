@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "drf_yasg",
     "corsheaders",
     "user",
     "report",
@@ -140,6 +141,8 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
+
+SWAGGER_SETTINGS = {"USE_SESSION_AUTH": False}
 
 
 LANGUAGE_CODE = "en-us"
