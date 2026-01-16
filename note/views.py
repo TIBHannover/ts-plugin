@@ -21,6 +21,12 @@ from django.http import HttpResponseServerError, Http404, HttpResponseBadRequest
 from django.core.exceptions import PermissionDenied
 from django.conf import settings
 import json
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework.decorators import api_view
+from note.docs import (
+    NoteCreateRequestSerializer,
+    NoteCreateResponseSerializer,
+)
 
 DEFAULT_NOTE_LIST_SIZE = 10
 DEFAULT_NOTE_LIST_PAGE = 1
@@ -32,6 +38,19 @@ def ping(request):
     return create_json_response({"response": "Pong"})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="post",
+    request_body=NoteCreateRequestSerializer,
+    responses={
+        200: NoteCreateResponseSerializer,
+        401: "Not Authorized",
+        500: "Server Error",
+    },
+    operation_summary="Create a note",
+    operation_description="Creates a note for a given ontology. Visibility can be 'me', 'internal', or 'public'.",
+)
+@api_view(["POST"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])

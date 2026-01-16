@@ -9,12 +9,14 @@ from django.conf.urls.static import static
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="Snippets API",
+        title="TS Plugin Service API",
         default_version="v1",
-        description="Test description",
-        terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="contact@snippets.local"),
-        license=openapi.License(name="BSD License"),
+        description="TS Plugin Service API is responsible for managing users, notes, collections, termsets, and other related entities.",
+        terms_of_service="https://terminology.tib.eu/ts/TermsOfUse",
+        contact=openapi.Contact(url="https://terminology.tib.eu/ts/contact"),
+        license=openapi.License(
+            name="CC0 1.0 Universal (CC0 1.0 Public Domain Dedication)"
+        ),
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
