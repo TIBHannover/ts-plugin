@@ -26,6 +26,18 @@ from rest_framework.decorators import api_view
 from note.docs import (
     NoteCreateRequestSerializer,
     NoteCreateResponseSerializer,
+    NoteUpdateRequestSerializer,
+    NoteUpdateResponseSerializer,
+    NoteListRequestSerializer,
+    NoteListResponseSerializer,
+    NoteGetRequestSerializer,
+    NoteGetResponseSerializer,
+    NoteCreateCommentRequestSerializer,
+    NoteCreateCommentResponseSerializer,
+    NoteUpdateCommentRequestSerializer,
+    NoteUpdateCommentResponseSerializer,
+    ObjectDeleteRequestSerializer,
+    ObjectDeleteResponseSerializer,
 )
 
 DEFAULT_NOTE_LIST_SIZE = 10
@@ -91,6 +103,20 @@ def create(request):
     return create_json_response({"note_created": note_model_object.to_dict()})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="put",
+    request_body=NoteUpdateRequestSerializer,
+    responses={
+        200: NoteUpdateResponseSerializer,
+        401: "Not Authorized",
+        404: "Note does not exist",
+        500: "Server Error",
+    },
+    operation_summary="Update a note",
+    operation_description="Update a note for a given note id",
+)
+@api_view(["PUT"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -151,6 +177,18 @@ def update(request):
     return create_json_response({"note_updated": upadated_note.to_dict()})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="get",
+    query_serializer=NoteListRequestSerializer,
+    responses={
+        200: NoteListResponseSerializer,
+        500: "Server Error",
+    },
+    operation_summary="note list",
+    operation_description="get a list of notes",
+)
+@api_view(["GET"])
 @error_handler_decorator
 @require_http_methods(["GET"])
 def note_list(request):
@@ -212,6 +250,19 @@ def note_list(request):
     return create_json_response({"notes": notes, "stats": stats})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="get",
+    query_serializer=NoteGetRequestSerializer,
+    responses={
+        200: NoteGetResponseSerializer,
+        404: "Note does not exist",
+        500: "Server Error",
+    },
+    operation_summary="get one note",
+    operation_description="get one note",
+)
+@api_view(["GET"])
 @error_handler_decorator
 @require_http_methods(["GET"])
 def get(request, note_id):
@@ -270,6 +321,19 @@ def get(request, note_id):
     )
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="post",
+    request_body=NoteCreateCommentRequestSerializer,
+    responses={
+        200: NoteCreateCommentResponseSerializer,
+        404: "Note does not exist",
+        500: "Server Error",
+    },
+    operation_summary="create a comment for a note",
+    operation_description="create a comment for a note",
+)
+@api_view(["POST"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
@@ -303,6 +367,20 @@ def create_comment(request):
     return create_json_response({"comment_created": note_comment_model.to_dict()})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="put",
+    request_body=NoteUpdateCommentRequestSerializer,
+    responses={
+        200: NoteUpdateCommentResponseSerializer,
+        401: "Not Authorized",
+        404: "Comment does not exist",
+        500: "Server Error",
+    },
+    operation_summary="update a comment for a note",
+    operation_description="update a comment for a note",
+)
+@api_view(["PUT"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -311,7 +389,7 @@ def update_comment(request):
     username = get_username_from_request()
     content = payload.get("content")
     comment_id = payload["comment_id"]
-    ontology_id = payload["ontology_id"]
+    ontology_id = payload.get("ontology_id", "")
     user = UserModel.get_by_username(username=username)
     if not user:
         # user is a guest user
@@ -345,6 +423,20 @@ def update_comment(request):
     return create_json_response({"comment_updated": comment_to_update.to_dict()})
 
 
+@swagger_auto_schema(
+    tags=["Note"],
+    method="delete",
+    request_body=ObjectDeleteRequestSerializer,
+    responses={
+        200: ObjectDeleteResponseSerializer,
+        401: "Not Authorized",
+        404: "Object not found",
+        500: "Server Error",
+    },
+    operation_summary="delete a note or comment",
+    operation_description="delete a note or comment. Works for both notes and comments.",
+)
+@api_view(["DELETE"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["DELETE"])
@@ -353,7 +445,7 @@ def delete(request):
     username = get_username_from_request()
     object_id = payload["objectId"]
     object_type = payload["objectType"]
-    ontology_id = payload["ontology_id"]
+    ontology_id = payload.get("ontology_id", "")
     user = UserModel.get_by_username(username=username)
     user_id = user.id if user else -1
     if object_type == "note":
