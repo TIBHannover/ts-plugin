@@ -15,15 +15,31 @@ class TestHelper:
     client_ts = "general"
 
     @staticmethod
-    def generate_jwt(payload, auth_provider_token, username, orcid_id=""):
+    def generate_jwt(payload, username, token, orcid_id=""):
         payload["exp"] = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
             60 * 5
         )
-        payload["token"] = auth_provider_token
         payload["ts_username"] = username
         payload["orcid_id"] = orcid_id
+        payload["token"] = token
         jwt_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
         return jwt_token
+
+    @staticmethod
+    def generate_csrf_token() -> str:
+        return jwt.encode(
+            {"csrf": secrets.token_urlsafe(32)},
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
+
+    @staticmethod
+    def generate_jwt_cookie() -> str:
+        return jwt.encode(
+            {"jwt": secrets.token_urlsafe(32)},
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
 
     @staticmethod
     def validate_and_return_jwt_payload(token: str):

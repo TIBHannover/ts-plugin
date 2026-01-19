@@ -280,7 +280,7 @@ def add_term(request, setId):
     method="delete",
     query_serializer=RemoveTermRequestSerializer,
     responses={
-        200: TermSetAddTermResponseSerializer,
+        200: TermSetRemoveTermResponseSerializer,
         404: "Term set does not exist",
         500: "Server Error",
     },

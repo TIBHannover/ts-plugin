@@ -13,23 +13,17 @@ class BaseTest:
     test_orcid_username = "orcid_" + settings.ORCID_LOGIN_USERNAME
     client_ts_id = "general"
     github_request_headers = {
-        "Authorization": "Bearer {}".format(
-            TestHelper.generate_jwt({}, github_access_token, test_github_username)
-        ),
         "Content-Type": "application/json",
         "X-TS-Auth-Provider": "github",
         "X-TS-Frontend-Id": client_ts_id,
+        "X-CSRF-Token": TestHelper.generate_csrf_token(),
     }
 
     orcid_request_headers = {
-        "Authorization": "Bearer {}".format(
-            TestHelper.generate_jwt(
-                {}, orcid_access_token, test_orcid_username, orcid_id
-            )
-        ),
         "Content-Type": "application/json",
         "X-TS-Auth-Provider": "orcid",
         "X-TS-Frontend-Id": client_ts_id,
+        "X-CSRF-Token": TestHelper.generate_csrf_token(),
     }
 
     guest_request_headers = {
