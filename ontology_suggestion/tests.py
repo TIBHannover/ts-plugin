@@ -21,11 +21,15 @@ class TestOntologySuggestion(TestCase, BaseTest):
             "collection_ids": "x,y",
             "collection_suggestion": "",
         }
-        TestHelper.createGitHubUser()
+        self.gitHubUser = TestHelper.createGitHubUser()
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
 
     def test_onto_suggest_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -41,6 +45,7 @@ class TestOntologySuggestion(TestCase, BaseTest):
         """repeating the last test should fail since it already exists"""
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -54,6 +59,7 @@ class TestOntologySuggestion(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
         self.ontology_suggestion["collection_suggestion"] = "true"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
