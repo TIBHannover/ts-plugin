@@ -30,6 +30,14 @@ def ping(request):
 
 @error_handler_decorator
 @require_http_methods(["GET"])
+@authentication_required
+def close_endpoint(request):
+    # used for testing auth validation
+    return create_json_response({"response": "closed"})
+
+
+@error_handler_decorator
+@require_http_methods(["GET"])
 def login(request):
     _time = datetime.datetime
     auth_object_dict = get_headers_dict()

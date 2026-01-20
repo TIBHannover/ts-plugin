@@ -8,7 +8,7 @@ import datetime
 import uuid
 from jose import jwt, JWTError
 import secrets
-from django.contrib.auth.hashers import make_password
+from user_service.libs.utils import make_hash
 
 
 class TestHelper:
@@ -85,7 +85,7 @@ class TestHelper:
             created_at=_time.now(),
             description=description,
             title=title,
-            api_key=make_password(secrets.token_urlsafe(32)),
+            api_key=make_hash("apk_general_" + secrets.token_urlsafe(32)),
             expires_at=None,
             owner=user,
             user_extra={},
