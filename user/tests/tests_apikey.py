@@ -6,11 +6,19 @@ import json
 
 
 class TestApiKey(TestCase, BaseTest):
-
     @classmethod
     def setUpTestData(self) -> None:
         self.user = TestHelper.createGitHubUser()
         self.other_user = TestHelper.createOrcidUser()
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.user.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.other_user.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
         self.existing_api_key = TestHelper.createApiKeyUser(
             user=self.user,
             name="project_u",
@@ -46,6 +54,7 @@ class TestApiKey(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.keydata)
         data.pop("title")
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.url + "create/",
             headers=headers,
@@ -56,6 +65,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_creation_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.url + "create/",
             headers=headers,
@@ -63,8 +73,10 @@ class TestApiKey(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["_result"]["token"].startswith("apk_"))
-        self.assertEqual(len(response.json()["_result"]["token"]), 68)  # api_ + 32 hex
+        self.assertTrue(response.json()["_result"]["token"].startswith("apk_general_"))
+        self.assertEqual(
+            len(response.json()["_result"]["token"]), 76
+        )  # api_general_ + 32 hex
 
     def test_api_key_update_should_fail_for_guest(self):
         headers = copy.copy(self.guest_request_headers)
@@ -80,6 +92,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_update_should_fail_for_non_owner_user(self):
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         data = copy.copy(self.update_keydata)
         data["id"] = self.existing_api_key.id
         response = self.client.put(
@@ -94,6 +107,7 @@ class TestApiKey(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.update_keydata)
         data["id"] = self.existing_api_key.id
+        self.client.cookies["jwt"] = self.github_user_jwt
         data.pop("title")
         response = self.client.put(
             self.url + "update/",
@@ -107,6 +121,7 @@ class TestApiKey(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.update_keydata)
         data["id"] = self.existing_api_key.id
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.url + "update/",
             headers=headers,
@@ -130,6 +145,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_deletion_should_fail_for_non_owner_user(self):
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.delete(
             self.url + "delete/",
             headers=headers,
@@ -140,6 +156,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_deletion_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             self.url + "delete/",
             headers=headers,
@@ -160,6 +177,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_list_should_contains_nothing_for_orcid_user(self):
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.get(
             self.url + "get/",
             headers=headers,
@@ -170,6 +188,7 @@ class TestApiKey(TestCase, BaseTest):
 
     def test_api_key_list_should_contains_one_key_for_github_user(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             self.url + "get/",
             headers=headers,

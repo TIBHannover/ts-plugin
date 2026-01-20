@@ -6,11 +6,10 @@ import json
 
 
 class TestSearchSetting(TestCase, BaseTest):
-
     @classmethod
     def setUpTestData(self) -> None:
         self.user = TestHelper.createGitHubUser()
-        TestHelper.createOrcidUser()
+        self.orcidUser = TestHelper.createOrcidUser()
 
         self.settings_dict = {
             "title": "Test setting",
@@ -24,6 +23,15 @@ class TestSearchSetting(TestCase, BaseTest):
             settings={"test_field": "test_value"},
         ).to_dict()
         self.url = "/user/search_setting/"
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.user.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_setting_creation_should_fail_for_guest(self):
         headers = copy.copy(self.guest_request_headers)
@@ -39,6 +47,7 @@ class TestSearchSetting(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         data = copy.copy(self.settings_dict)
         data.pop("title")
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.url,
             headers=headers,
@@ -49,6 +58,7 @@ class TestSearchSetting(TestCase, BaseTest):
 
     def test_setting_creation_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.url,
             headers=headers,
@@ -65,6 +75,7 @@ class TestSearchSetting(TestCase, BaseTest):
         Setting is created by github user, but trying to get collection by orcid user
         """
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 404)
@@ -72,12 +83,14 @@ class TestSearchSetting(TestCase, BaseTest):
     def test_get_setting_should_fail_for_non_existing_id(self):
         headers = copy.copy(self.github_request_headers)
         url = self.url + "non_existing_id/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 404)
 
     def test_get_setting_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -87,6 +100,7 @@ class TestSearchSetting(TestCase, BaseTest):
 
     def test_get_setting_list_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             self.url, headers=headers, content_type="application/json"
         )
@@ -98,6 +112,7 @@ class TestSearchSetting(TestCase, BaseTest):
         Setting is created by github user, but trying to update collection by orcid user
         """
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
         response = self.client.put(
             url,
@@ -109,6 +124,7 @@ class TestSearchSetting(TestCase, BaseTest):
 
     def test_setting_update_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
         response = self.client.put(
             url,
@@ -123,12 +139,14 @@ class TestSearchSetting(TestCase, BaseTest):
         Setting is created by github user, but trying to update collection by orcid user
         """
         headers = copy.copy(self.orcid_request_headers)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
         response = self.client.delete(url, headers=headers)
         self.assertEqual(response.status_code, 404)
 
     def test_setting_delete_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         url = self.url + str(self.test_setting_for_db["id"]) + "/"
         response = self.client.delete(url, headers=headers)
         self.assertEqual(response.status_code, 200)
