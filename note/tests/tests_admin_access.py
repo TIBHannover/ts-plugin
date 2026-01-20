@@ -47,10 +47,20 @@ class TestAdminAccess(TestCase, BaseTest):
             self.orcidUser, self.me_vis_note
         )
         TestHelper.createRole(self.gitHubUser, "vibso", "ontology", "admin")
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_note_update_admin_should_work_for_admin(self):
         headers = copy.copy(self.github_request_headers)
         note_update_url = "/note/update/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             note_update_url,
             headers=headers,
@@ -70,6 +80,7 @@ class TestAdminAccess(TestCase, BaseTest):
         }
         post_data["comment_id"] = self.internal_vis_note_comment.id
         comment_update_url = "/note/update_comment/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             comment_update_url,
             headers=headers,
@@ -90,6 +101,7 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -108,6 +120,7 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -126,6 +139,7 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -142,6 +156,7 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,

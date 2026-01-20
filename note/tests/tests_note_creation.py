@@ -20,13 +20,22 @@ class TestNoteCreation(TestCase, BaseTest):
         self.note_creation_url = "/note/create/"
         self.orcidUser = TestHelper.createOrcidUser()
         self.gitHubUser = TestHelper.createGitHubUser()
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_note_creation_should_fail_without_username(self):
         headers = copy.copy(self.github_request_headers)
-        jwt_token = TestHelper.generate_jwt(
-            {}, self.github_access_token, "not_A_username"
+        token_without_username = TestHelper.generate_jwt(
+            {}, "not_A_username", self.github_access_token
         )
-        headers["Authorization"] = "Bearer {}".format(jwt_token)
+        self.client.cookies["jwt"] = token_without_username
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -40,6 +49,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["title"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -53,6 +63,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["content"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -66,6 +77,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["ontology_id"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -79,6 +91,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["semantic_component_type"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -92,6 +105,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["semantic_component_iri"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -103,6 +117,7 @@ class TestNoteCreation(TestCase, BaseTest):
 
     def test_note_creation_should_success(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -118,6 +133,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.note)
         del post_data["visibility"]
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,
@@ -132,6 +148,7 @@ class TestNoteCreation(TestCase, BaseTest):
         headers["Content-Type"] = "application/json"
         post_data = copy.copy(self.note)
         post_data["parentOntology"] = self.test_parent_ontology_id
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.note_creation_url,
             headers=headers,

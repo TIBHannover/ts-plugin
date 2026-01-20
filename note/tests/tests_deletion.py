@@ -15,10 +15,20 @@ class TestDeletion(TestCase, BaseTest):
             user=self.gitHubUser, note=self.note
         )
         self.note_comment_delete_url = "/note/delete/"
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_delete_should_fail_without_object_id(self):
         headers = copy.copy(self.github_request_headers)
         post_data = {"objectType": "note", "ontology_id": self.test_ontology_id}
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             self.note_comment_delete_url,
             headers=headers,
@@ -31,6 +41,7 @@ class TestDeletion(TestCase, BaseTest):
     def test_delete_should_fail_without_object_type(self):
         headers = copy.copy(self.github_request_headers)
         post_data = {"objectId": self.note.id, "ontology_id": self.test_ontology_id}
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             self.note_comment_delete_url,
             headers=headers,
@@ -47,6 +58,7 @@ class TestDeletion(TestCase, BaseTest):
             "objectType": "note",
             "ontology_id": self.test_ontology_id,
         }
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.delete(
             self.note_comment_delete_url,
             headers=headers,
@@ -70,7 +82,7 @@ class TestDeletion(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 401)
-        self.assertIn("Not Authorized", response.content.decode())
+        self.assertIn("request is not valid", response.content.decode())
 
     def test_delete_should_success_for_note(self):
         headers = copy.copy(self.github_request_headers)
@@ -79,6 +91,7 @@ class TestDeletion(TestCase, BaseTest):
             "objectType": "note",
             "ontology_id": self.test_ontology_id,
         }
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             self.note_comment_delete_url,
             headers=headers,
@@ -90,6 +103,7 @@ class TestDeletion(TestCase, BaseTest):
 
     def test_delete_should_success_for_comment(self):
         headers = copy.copy(self.github_request_headers)
+        self.client.cookies["jwt"] = self.github_user_jwt
         post_data = {
             "objectId": self.comment.id,
             "objectType": "comment",

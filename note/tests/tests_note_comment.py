@@ -21,11 +21,21 @@ class TestNoteComment(TestCase, BaseTest):
         self.comment_to_edit = TestHelper.createCommentForNote(
             user=self.gitHubUser, note=self.public_note
         )
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_note_comment_should_fail_with_wrong_noteId(self):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.comment_for_public_note)
         post_data["noteId"] = 12345
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -45,11 +55,12 @@ class TestNoteComment(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 401)
-        self.assertIn("Not Authorize", response.content.decode())
+        self.assertIn("request is not valid", response.content.decode())
 
     def test_note_comment_should_fail_for_user_who_are_not_private_note_owner(self):
         headers = copy.copy(self.orcid_request_headers)
         post_data = copy.copy(self.comment_for_private_note)
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -62,6 +73,7 @@ class TestNoteComment(TestCase, BaseTest):
     def test_note_comment_should_success(self):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.comment_for_private_note)
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -79,6 +91,7 @@ class TestNoteComment(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = 12345
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,
@@ -99,12 +112,13 @@ class TestNoteComment(TestCase, BaseTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 401)
-        self.assertIn("Not Authorized", response.content.decode())
+        self.assertIn("request is not valid", response.content.decode())
 
     def test_note_comment_edit_should_fail_with_non_owner_user(self):
         headers = copy.copy(self.orcid_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = self.comment_to_edit.id
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,
@@ -118,6 +132,7 @@ class TestNoteComment(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = self.comment_to_edit.id
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,

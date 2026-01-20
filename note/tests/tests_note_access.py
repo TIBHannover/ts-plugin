@@ -27,6 +27,15 @@ class TestNoteAccess(TestCase, BaseTest):
         self.private_note_comment = TestHelper.createCommentForNote(
             self.gitHubUser, self.private_note
         )
+        self.github_user_jwt = TestHelper.generate_jwt(
+            {}, self.gitHubUser.username, self.github_access_token
+        )
+        self.orcid_user_jwt = TestHelper.generate_jwt(
+            {},
+            self.orcidUser.username,
+            self.orcid_access_token,
+            self.orcid_id,
+        )
 
     def test_note_list_should_only_contains_public_note_for_guest_user(self):
         params = {"ontology": self.test_ontology_id}
@@ -45,6 +54,7 @@ class TestNoteAccess(TestCase, BaseTest):
 
         params = {"ontology": self.test_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.get(
             note_list_url, headers=self.orcid_request_headers, data=params
         )
@@ -60,6 +70,7 @@ class TestNoteAccess(TestCase, BaseTest):
 
         params = {"ontology": self.test_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -71,6 +82,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_note_list_should_contains_only_the_ontology_notes(self):
         params = {"ontology": self.test_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -85,6 +97,7 @@ class TestNoteAccess(TestCase, BaseTest):
         """
         params = {"ontology": self.test_parent_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -100,6 +113,7 @@ class TestNoteAccess(TestCase, BaseTest):
     ):
         params = {"ontology": self.test_parent_ontology_id, "onlyOriginalNotes": True}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -109,6 +123,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_note_list_stats(self):
         params = {"ontology": self.test_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -123,6 +138,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_get_note_should_fail_with_wrong_note_id(self):
         params = {"ontology": self.test_ontology_id}
         get_a_note_url = "/note/get/12345/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             get_a_note_url, headers=self.github_request_headers, data=params
         )
@@ -158,6 +174,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_user_can_access_internal_note(self):
         params = {"ontology": self.test_ontology_id}
         get_a_note_url = "/note/get/" + str(self.internal_note.id) + "/"
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.get(
             get_a_note_url, headers=self.orcid_request_headers, data=params
         )
@@ -166,6 +183,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_user_can_access_public_note(self):
         params = {"ontology": self.test_ontology_id}
         get_a_note_url = "/note/get/" + str(self.public_note.id) + "/"
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.get(
             get_a_note_url, headers=self.orcid_request_headers, data=params
         )
@@ -174,6 +192,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_user_cannot_access_another_user_private_note(self):
         params = {"ontology": self.test_ontology_id}
         get_a_note_url = "/note/get/" + str(self.private_note.id) + "/"
+        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.get(
             get_a_note_url, headers=self.orcid_request_headers, data=params
         )
@@ -182,6 +201,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_user_can_access_her_own_private_note(self):
         params = {"ontology": self.test_ontology_id}
         get_a_note_url = "/note/get/" + str(self.private_note.id) + "/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             get_a_note_url, headers=self.github_request_headers, data=params
         )
@@ -190,6 +210,7 @@ class TestNoteAccess(TestCase, BaseTest):
     def test_note_list_filtering_based_on_artifact_type(self):
         params = {"ontology": self.test_ontology_id, "artifact_type": "class"}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(
             note_list_url, headers=self.github_request_headers, data=params
         )
@@ -202,6 +223,7 @@ class TestNoteAccess(TestCase, BaseTest):
         headers["X-TS-Frontend-Id"] = "some_other_client_ts"
         params = {"ontology": self.test_ontology_id}
         note_list_url = "/note/list/"
+        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(note_list_url, headers=headers, data=params)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["_result"]["notes"]), 0)
