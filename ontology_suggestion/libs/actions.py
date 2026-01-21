@@ -6,6 +6,7 @@ from .shape_test import test as test_onto_shape
 
 
 def collectionSuggestionParams(
+    requestBody: any,  # MODIFIED: accept request body to include adopter fields in issue content
     collection_ids: str,
     username: str,
     email: str,
@@ -19,6 +20,26 @@ def collectionSuggestionParams(
     issue_content += "Ontology Name: {}\n\nPURL: {}\n\nReason: {}\n\n".format(
         ontoName, ontoPurl, reason
     )
+
+    # MODIFIED: include ontology adopter information in the GitLab issue (when provided)
+    adopter_fields = {
+        "Type of adopter using the terminology": requestBody.get("adopter_type"),
+        "Name of the terminology adopter": requestBody.get("adopter_name"),
+        "Alternative/short name (if applicable)": requestBody.get("adopter_alt_name"),
+        "PID of the terminology adopter": requestBody.get("adopter_pid"),
+        "Homepage of the terminology adopter": requestBody.get("adopter_homepage"),
+        "Description of the terminology adopter (in English)": requestBody.get("adopter_description"),
+        "Name of the provider or affiliation of the terminology adopter": requestBody.get("provider_name"),
+        "PID of the provider/affiliation": requestBody.get("provider_pid"),
+        "How is the terminology used? (in English)": requestBody.get("usage_description"),
+        "The terminology will be used via": requestBody.get("usage_channel"),
+    }
+    if any(v not in (None, "", []) for v in adopter_fields.values()):
+        issue_content += "Ontology adopter information:\n\n"
+        for k, v in adopter_fields.items():
+            if v not in (None, "", []):
+                issue_content += "{}: {}\n\n".format(k, v)
+
     issue_content += "Target Collection IDs: \n\n"
     label = "add_to_collection"
     for colId in collection_ids.split(","):
@@ -75,8 +96,6 @@ def ontologySuggestionParams(
         missing_fileds = {}
         if len(validation["error"]) > 0:
             for error in validation["error"]:
-                # if not data.get(error['about']):
-                #  abort(400, 'Please provide {}'.format(error['about']))
                 missing_fileds[error["about"]] = requestBody.get(error["about"])
                 issue_content += "<h4><b>Missing Fields</b></h4> These fields are missing from the ontology based on the SHACL test, and instead, user was asked to provide them.\n\n"
                 issue_content += "\n\n"

@@ -42,6 +42,7 @@ def create(request):
     issue_content = ""
     if collection_suggestion:
         parameters = collectionSuggestionParams(
+            requestBody=data,  # MODIFIED: pass request body so adopter fields can be included in issue content
             collection_ids=collection_ids,
             username=username,
             email=email,
