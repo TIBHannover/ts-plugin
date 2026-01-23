@@ -37,6 +37,10 @@ class UserModel(models.Model):
     def __str__(self) -> str:
         return f"<User {self.username} ({self.client_ts})>"
 
+    def save(self, **kwargs):
+        self.updated_at = _time.now()
+        super().save(**kwargs)
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
