@@ -50,19 +50,19 @@ def ping(request):
     return create_json_response({"response": "Pong"})
 
 
-@swagger_auto_schema(
-    tags=["Note"],
-    method="post",
-    request_body=NoteCreateRequestSerializer,
-    responses={
-        200: NoteCreateResponseSerializer,
-        401: "Not Authorized",
-        500: "Server Error",
-    },
-    operation_summary="Create a note",
-    operation_description="Creates a note for a given ontology. Visibility can be 'me', 'internal', or 'public'.",
-)
-@api_view(["POST"])
+# @swagger_auto_schema(
+#     tags=["Note"],
+#     method="post",
+#     request_body=NoteCreateRequestSerializer,
+#     responses={
+#         200: NoteCreateResponseSerializer,
+#         401: "Not Authorized",
+#         500: "Server Error",
+#     },
+#     operation_summary="Create a note",
+#     operation_description="Creates a note for a given ontology. Visibility can be 'me', 'internal', or 'public'.",
+# )
+# @api_view(["POST"])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
