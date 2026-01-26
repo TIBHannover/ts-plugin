@@ -38,7 +38,7 @@ class NoteModel(models.Model):
             "title": self.title,
             "content": self.content,
             "visibility": self.visibility,
-            "created_by": UserModel.get_user_name_by_id(self.creator.id),
+            "created_by": self.creator.to_dict(),
             "pinned": self.pinned,
             "active": self.active,
             "parent_ontology": self.parent_ontology_id,
