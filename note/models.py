@@ -4,6 +4,7 @@ from typing import Union
 from report.models import ReportModel
 from user_service.middlewares.client_id import get_client_id_from_request
 
+
 VISIBILITIES_VALUES = ["me", "internal", "public"]
 SC_TYPES = ["ontology", "class", "property", "individual"]
 _Q = models.Q
@@ -110,7 +111,6 @@ class NoteModel(models.Model):
         if not notes:
             return {"notes": [], "count_of_all_notes": count_of_all_notes}
         result = []
-        # auth = Auth()
         for note in notes:
             comment_count = note.note_comments.filter(active=True).count()
             note_dict = note.to_dict()
@@ -121,11 +121,6 @@ class NoteModel(models.Model):
             note_report = ReportModel.objects.filter(
                 reported_object_type="note", reported_object_id=note_dict["id"]
             ).first()
-            # note_dict["can_edit"] = auth.user_can_edit_object(
-            #     objectModel=NoteModel,
-            #     object_id=note_dict["id"],
-            #     role_target_object_id=note_dict["ontology_id"],
-            # )
             note_dict["is_reported"] = True if note_report else False
 
             result.append(note_dict)
