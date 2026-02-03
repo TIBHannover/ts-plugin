@@ -29,13 +29,17 @@ class GithubLib:
             "redirect_uri": redirect_url,
         }
         resp = requests.post(settings.GITHUB_TOKEN_URL, data=data)
+        print(resp.text, flush=True)
         if resp.status_code == 200 and "access_token=" in resp.text:
+            print("access_token=", flush=True)
             token = resp.text.split("access_token=")[1]
             token = token.split("&")[0]
             user = requests.get(
                 settings.GITHUB_USER_URL,
                 headers={"Authorization": "token " + token},
             )
+            print(user.status_code, flush=True)
+            print(user.json(), flush=True)
             if user.status_code == 200:
                 user_data = user.json()
                 response_data = {}
