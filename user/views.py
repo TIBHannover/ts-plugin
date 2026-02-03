@@ -88,7 +88,7 @@ def login(request):
             key="jwt",
             value=jwt_token,
             httponly=True,
-            secure=True,
+            secure=not settings.DEBUG,
             samesite=None,
             max_age=30 * 24 * 60 * 60,
         )

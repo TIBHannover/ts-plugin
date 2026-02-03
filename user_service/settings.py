@@ -29,6 +29,10 @@ AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
 CORS_ALLOW_CREDENTIALS = True
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SECURE = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8080",
