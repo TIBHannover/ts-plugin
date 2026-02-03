@@ -68,6 +68,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-User-Token",
     "X-TS-User-Name",
     "X-CSRF-Token",
+    "X-Auth-Token",
 )
 
 
