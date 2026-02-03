@@ -20,9 +20,9 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     ".service.tib.eu",
-    "terminilogy.nfdi4chem.de",
-    "terminilogy.nfdi4ing.de",
-    "terminilogy.tib.eu",
+    ".terminilogy.nfdi4chem.de",
+    ".terminilogy.nfdi4ing.de",
+    ".terminilogy.tib.eu",
 ]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
