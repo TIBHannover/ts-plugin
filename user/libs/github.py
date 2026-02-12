@@ -29,6 +29,7 @@ class GithubLib:
         }
         resp = requests.post(settings.GITHUB_TOKEN_URL, data=data)
         if resp.status_code == 200 and "access_token=" in resp.text:
+            print("access_token=", flush=True)
             token = resp.text.split("access_token=")[1]
             token = token.split("&")[0]
             user = requests.get(

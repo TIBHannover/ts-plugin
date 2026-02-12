@@ -20,7 +20,6 @@ def authentication_required(func):
             if api_key:
                 # this is an api call
                 user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
-                print(user, flush=True)
                 if user:
                     return func(*args, **kwargs)
                 else:

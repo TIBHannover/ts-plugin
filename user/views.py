@@ -83,15 +83,8 @@ def login(request):
         auth_response_dict["csrf_token"] = csrf_token
         # remove the token from the payload since we handle it in the cookie
         auth_response_dict.pop("token", None)
+        auth_response_dict["jwt"] = jwt_token
         response = JsonResponse({"_result": auth_response_dict})
-        response.set_cookie(
-            key="jwt",
-            value=jwt_token,
-            httponly=True,
-            secure=not settings.DEBUG,
-            samesite=None,
-            max_age=30 * 24 * 60 * 60,
-        )
         return response
     return create_json_response({"issue": "auth is rejected"})
 

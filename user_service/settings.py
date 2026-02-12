@@ -16,12 +16,23 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG_MODE", default=False)
 
 
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", ".service.tib.eu"]
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+    ".service.tib.eu",
+    ".terminilogy.nfdi4chem.de",
+    ".terminilogy.nfdi4ing.de",
+    ".terminilogy.tib.eu",
+]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 
 CORS_ALLOW_CREDENTIALS = True
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SECURE = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8080",
@@ -39,6 +50,9 @@ CSRF_TRUSTED_ORIGINS = [
     "https://service.tib.eu",
     "http://localhost:3000",
     "http://localhost",
+    "https://terminology.nfdi4chem.de",
+    "https://terminology.nfdi4ing.de",
+    "https://terminology.tib.eu",
 ]
 
 CORS_ALLOW_METHODS = (*default_methods,)
@@ -54,6 +68,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-User-Token",
     "X-TS-User-Name",
     "X-CSRF-Token",
+    "X-Auth-Token",
 )
 
 

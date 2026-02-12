@@ -61,7 +61,7 @@ def get_api_key_from_request():
 
 def get_jwt_token_from_request():
     request = getattr(_current_context, "request", None)
-    token = request.COOKIES.get("jwt")
+    token = request.headers.get("X-Auth-Token")
     return token
 
 
