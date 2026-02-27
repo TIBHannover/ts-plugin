@@ -14,7 +14,7 @@ from user_service.middlewares.client_id import get_client_id_from_request
 from django.http import HttpResponseBadRequest, Http404
 import json
 import requests
-from user_service.settings import settings
+from django.conf import settings
 
 
 @require_http_methods(["GET"])
@@ -132,5 +132,10 @@ def delete(request, collection_id):
 @error_handler_decorator
 @require_http_methods(["GET"])
 def get_bioregistry_collections(request):
-    resp = requests.get(settings.BIOREGISTRY_ENDPOINT)
+    resp = requests.get(settings.BIOREGISTRY_ENDPOINT + "/collection?format=json")
+    print(resp.status_code, flush=True)
+    print(resp.text, flush=True)
+    print(settings.BIOREGISTRY_ENDPOINT, flush=True)
+    if resp.status_code != 200:
+        return HttpResponseBadRequest("Bioregistry API is not available")
     return create_json_response({"collections": resp.json()})
