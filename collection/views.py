@@ -133,9 +133,6 @@ def delete(request, collection_id):
 @require_http_methods(["GET"])
 def get_bioregistry_collections(request):
     resp = requests.get(settings.BIOREGISTRY_ENDPOINT + "/collection?format=json")
-    print(resp.status_code, flush=True)
-    print(resp.text, flush=True)
-    print(settings.BIOREGISTRY_ENDPOINT, flush=True)
     if resp.status_code != 200:
         return HttpResponseBadRequest("Bioregistry API is not available")
     return create_json_response({"collections": resp.json()})
