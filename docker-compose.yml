@@ -48,7 +48,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: celery -A user_service worker --loglevel=info --concurrency=2
+    command: celery -A user_service worker --loglevel=info --concurrency=50
     depends_on:
       db:
         condition: service_healthy
