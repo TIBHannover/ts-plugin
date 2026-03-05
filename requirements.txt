@@ -33,3 +33,6 @@ types-psycopg2==2.9.21.20241019
 typing_extensions==4.12.2
 uritemplate==4.2.0
 urllib3==2.2.3
+celery[redis]
+redis
+django-celery-beat

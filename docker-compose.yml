@@ -36,6 +36,41 @@ services:
     volumes:
       - ./:/home/ts-app
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    networks:
+      - microservice
+  
+  celery_worker:
+    container_name: celery_worker
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A user_service worker --loglevel=info --concurrency=2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - microservice
+
+  celery_beat:
+    container_name: celery_beat
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A user_service beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - microservice
+
   nginx:
     container_name: nginx
     build:
@@ -47,8 +82,6 @@ services:
       - "0.0.0.0:80:80"
     networks:
       - microservice
-    volumes:
-      - ./staticfiles:/staticfiles
 
 networks:
   microservice:
