@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     "admin.apps.AdminConfig",
     "admin_cli",
     "term_set",
+    "pub_link",
 ]
 
 MIDDLEWARE = [
