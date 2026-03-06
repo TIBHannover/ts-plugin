@@ -8,6 +8,8 @@ from django.http import HttpResponseBadRequest
 import requests
 import json
 
+DOI_VALID_SOURCES = ["Crossref", "DataCite"]
+
 
 @require_http_methods(["GET"])
 def ping(request):
@@ -25,8 +27,43 @@ def create_pub_link(request):
     doi = doi.strip()
     doi_id = get_doi_id_from_url(doi)
     doi_source = get_doi_source(doi_id)
+    if not doi_source:
+        return HttpResponseBadRequest("Invalid DOI")
 
-    return create_json_response({"response": doi_source})
+    if doi_source == "DataCite":
+        citation = get_citation_from_datacite(doi_id)
+    else:
+        citation = ""
+
+    return create_json_response({"response": citation})
+
+
+def get_citation_from_datacite(doi_id):
+    url = "https://api.datacite.org/dois/{}".format(doi_id)
+    publicaton_resp = requests.get(url)
+    if publicaton_resp.status_code != 200:
+        return ""
+
+    publicaton = publicaton_resp.json()
+    if publicaton.get("data") is None:
+        return ""
+    pub_data = publicaton["data"]["attributes"]
+
+    citation = ""
+    authors = pub_data.get("creators", [])
+    for au in authors:
+        name = au.get("name")
+        au_parts = name.split(",")
+        if len(au_parts) > 1:
+            citation += "{} {}. ".format(au_parts[1], au_parts[0])
+        else:
+            citation += "{}. ".format(au_parts[0])
+
+    if len(pub_data.get("titles", [])) > 0:
+        citation += '"{}." '.format(pub_data["titles"][0]["title"])
+
+    citation += "({}). ".format(pub_data["publicationYear"])
+    return citation
 
 
 def get_doi_source(doi_id):
@@ -40,6 +77,8 @@ def get_doi_source(doi_id):
 
     doi_source = doi_source[0].get("RA")
     if doi_source is None:
+        return ""
+    if doi_source not in DOI_VALID_SOURCES:
         return ""
     return doi_source
 
