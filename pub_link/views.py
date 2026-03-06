@@ -33,7 +33,10 @@ def create_pub_link(request):
     if doi_source == "DataCite":
         citation = get_citation_from_datacite(doi_id)
     else:
-        citation = ""
+        citation = get_citation_from_crossref(doi_id)
+
+    if not citation:
+        raise Exception("Issue in getting citation")
 
     return create_json_response({"response": citation})
 
@@ -66,6 +69,30 @@ def get_citation_from_datacite(doi_id):
     return citation
 
 
+def get_citation_from_crossref(doi_id):
+    url = "https://api.crossref.org/works/{}".format(doi_id)
+    publicaton_resp = requests.get(url)
+    if publicaton_resp.status_code != 200:
+        return ""
+
+    publicaton_resp = publicaton_resp.json()
+    pub_data = publicaton_resp.get("message", {})
+    if not pub_data:
+        return ""
+
+    citation = ""
+    for au in pub_data.get("author", []):
+        name = au.get("given", "")
+        family = au.get("family", "")
+        citation += "{} {}. ".format(name, family)
+
+    if len(pub_data.get("title", [])) > 0:
+        citation += '"{}". '.format(pub_data["title"][0])
+
+    citation += "({}). ".format(pub_data["created"]["date-parts"][0][0])
+    return citation
+
+
 def get_doi_source(doi_id):
     doi_source_resp = requests.get("https://doi.org/doiRA/{}".format(doi_id))
     if doi_source_resp.status_code != 200:
@@ -92,4 +119,3 @@ def get_doi_id_from_url(url):
     else:
         doi_id = url
     return doi_id
-
