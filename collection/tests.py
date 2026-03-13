@@ -1,35 +1,24 @@
-from django.test import TestCase
 import copy
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import json
 
 
-class TestCollection(TestCase, BaseTest):
+class TestCollection(BaseTest):
     @classmethod
-    def setUpTestData(self) -> None:
-        self.github_user = TestHelper.createGitHubUser()
-        self.orcidUser = TestHelper.createOrcidUser()
-        self.collection = {
+    def setUpTestData(cls) -> None:
+        super().setUpTestData()
+        cls.collection = {
             "title": "Test creation",
             "content": "this is a test collection",
             "ontology_ids": ["vibso", "chmo"],
         }
-        self.test_collection_for_db = TestHelper.create_collection(
-            user=self.github_user,
+        cls.test_collection_for_db = TestHelper.create_collection(
+            user=cls.gitHubUser,
             title="Test update",
             content="this is a test collection",
             ontology_ids=["vibso"],
         ).to_dict()
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.github_user.username, self.github_access_token
-        )
-        self.orcid_user_jwt = TestHelper.generate_jwt(
-            {},
-            self.orcidUser.username,
-            self.orcid_access_token,
-            self.orcid_id,
-        )
 
     def test_collection_creation_should_fail_for_guest(self):
         headers = copy.copy(self.guest_request_headers)
@@ -47,7 +36,6 @@ class TestCollection(TestCase, BaseTest):
         data = copy.copy(self.collection)
         data.pop("title")
         url = "/collection/create/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url, headers=headers, data=json.dumps(data), content_type="application/json"
         )
@@ -57,7 +45,6 @@ class TestCollection(TestCase, BaseTest):
     def test_collection_creation_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/create/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -74,7 +61,6 @@ class TestCollection(TestCase, BaseTest):
         Collection is created by github user, but trying to get collection by orcid user
         """
         headers = copy.copy(self.orcid_request_headers)
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         url = "/collection/get/" + str(self.test_collection_for_db["id"]) + "/"
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 404)
@@ -82,14 +68,12 @@ class TestCollection(TestCase, BaseTest):
     def test_get_collection_should_fail_for_non_existing_id(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/get/non_existing_id/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 404)
 
     def test_get_collection_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/get/" + str(self.test_collection_for_db["id"]) + "/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -100,7 +84,6 @@ class TestCollection(TestCase, BaseTest):
     def test_get_collection_list_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/get_list/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["_result"]["collections"]), 1)
@@ -111,7 +94,6 @@ class TestCollection(TestCase, BaseTest):
         """
         headers = copy.copy(self.orcid_request_headers)
         url = "/collection/update/" + str(self.test_collection_for_db["id"]) + "/"
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.put(
             url,
             headers=headers,
@@ -123,7 +105,6 @@ class TestCollection(TestCase, BaseTest):
     def test_collection_update_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/update/" + str(self.test_collection_for_db["id"]) + "/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             url,
             headers=headers,
@@ -138,13 +119,11 @@ class TestCollection(TestCase, BaseTest):
         """
         headers = copy.copy(self.orcid_request_headers)
         url = "/collection/delete/" + str(self.test_collection_for_db["id"]) + "/"
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.delete(url, headers=headers)
         self.assertEqual(response.status_code, 404)
 
     def test_collection_delete_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/collection/delete/" + str(self.test_collection_for_db["id"]) + "/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(url, headers=headers)
         self.assertEqual(response.status_code, 200)

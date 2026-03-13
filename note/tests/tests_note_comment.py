@@ -1,19 +1,17 @@
-from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import copy
 import json
 
 
-class TestNoteComment(TestCase, BaseTest):
+class TestNoteComment(BaseTest):
     @classmethod
     def setUpTestData(self) -> None:
+        super().setUpTestData()
         self.comment_for_public_note = {"content": "Test Comment"}
         self.comment_for_private_note = {"content": "Test Comment"}
         self.comment_create_url = "/note/create_comment/"
         self.comment_update_url = "/note/update_comment/"
-        self.gitHubUser = TestHelper.createGitHubUser()
-        self.orcidUser = TestHelper.createOrcidUser()
         self.public_note = TestHelper.createNote(user=self.gitHubUser)
         self.private_note = TestHelper.createNote(user=self.gitHubUser, visibility="me")
         self.comment_for_public_note["noteId"] = self.public_note.id
@@ -21,21 +19,11 @@ class TestNoteComment(TestCase, BaseTest):
         self.comment_to_edit = TestHelper.createCommentForNote(
             user=self.gitHubUser, note=self.public_note
         )
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.gitHubUser.username, self.github_access_token
-        )
-        self.orcid_user_jwt = TestHelper.generate_jwt(
-            {},
-            self.orcidUser.username,
-            self.orcid_access_token,
-            self.orcid_id,
-        )
 
     def test_note_comment_should_fail_with_wrong_noteId(self):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.comment_for_public_note)
         post_data["noteId"] = 12345
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -60,7 +48,6 @@ class TestNoteComment(TestCase, BaseTest):
     def test_note_comment_should_fail_for_user_who_are_not_private_note_owner(self):
         headers = copy.copy(self.orcid_request_headers)
         post_data = copy.copy(self.comment_for_private_note)
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -73,7 +60,6 @@ class TestNoteComment(TestCase, BaseTest):
     def test_note_comment_should_success(self):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.comment_for_private_note)
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             self.comment_create_url,
             headers=headers,
@@ -91,7 +77,6 @@ class TestNoteComment(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = 12345
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,
@@ -118,7 +103,6 @@ class TestNoteComment(TestCase, BaseTest):
         headers = copy.copy(self.orcid_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = self.comment_to_edit.id
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,
@@ -132,7 +116,6 @@ class TestNoteComment(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = {"content": "edited", "ontology_id": self.test_ontology_id}
         post_data["comment_id"] = self.comment_to_edit.id
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.comment_update_url,
             headers=headers,

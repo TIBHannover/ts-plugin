@@ -1,13 +1,13 @@
 import copy
-from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import json
 
 
-class TestNoteUpdate(TestCase, BaseTest):
+class TestNoteUpdate(BaseTest):
     @classmethod
     def setUpTestData(self) -> None:
+        super().setUpTestData()
         self.edit_note_data = {
             "title": "Edited",
             "content": "New Test Content",
@@ -18,25 +18,13 @@ class TestNoteUpdate(TestCase, BaseTest):
             "visibility": "public",
         }
         self.note_update_url = "/note/update/"
-        self.orcidUser = TestHelper.createOrcidUser()
-        self.gitHubUser = TestHelper.createGitHubUser()
         self.note = TestHelper.createNote(user=self.gitHubUser)
         self.edit_note_data["noteId"] = self.note.id
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.gitHubUser.username, self.github_access_token
-        )
-        self.orcid_user_jwt = TestHelper.generate_jwt(
-            {},
-            self.orcidUser.username,
-            self.orcid_access_token,
-            self.orcid_id,
-        )
 
     def test_note_update_should_fail_without_noteId(self):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.edit_note_data)
         del post_data["noteId"]
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.note_update_url,
             headers=headers,
@@ -50,7 +38,6 @@ class TestNoteUpdate(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         post_data = copy.copy(self.edit_note_data)
         post_data["noteId"] = 12345
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.note_update_url,
             headers=headers,
@@ -74,7 +61,6 @@ class TestNoteUpdate(TestCase, BaseTest):
     def test_note_update_should_fail_for_user_withoud_edit_access(self):
         # Note was created with a github user. Orcid user cannot edit.
         headers = copy.copy(self.orcid_request_headers)
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         response = self.client.put(
             self.note_update_url,
             headers=headers,
@@ -86,7 +72,6 @@ class TestNoteUpdate(TestCase, BaseTest):
 
     def test_note_update_should_success(self):
         headers = copy.copy(self.github_request_headers)
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.note_update_url,
             headers=headers,
@@ -98,7 +83,6 @@ class TestNoteUpdate(TestCase, BaseTest):
 
     def test_note_update_should_success_for_removing_parent_ontology(self):
         headers = copy.copy(self.github_request_headers)
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             self.note_update_url,
             headers=headers,
@@ -113,7 +97,6 @@ class TestNoteUpdate(TestCase, BaseTest):
 
     def test_note_update_should_success_for_adding_parent_ontology(self):
         headers = copy.copy(self.github_request_headers)
-        self.client.cookies["jwt"] = self.github_user_jwt
         post_data = copy.copy(self.edit_note_data)
         post_data["parentOntology"] = "chmo"
         response = self.client.put(
