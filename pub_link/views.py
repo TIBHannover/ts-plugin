@@ -37,7 +37,7 @@ def create_pub_link(request):
     doi_id = get_doi_id_from_url(doi)
     doi_source = get_doi_source(doi_id)
     if not doi_source:
-        raise HttpResponseBadRequest("Invalid DOI")
+        return HttpResponseBadRequest("Invalid DOI")
 
     if doi_source == "DataCite":
         citation = get_citation_from_datacite(doi_id)
@@ -49,7 +49,7 @@ def create_pub_link(request):
 
     pub_link = PubLinkModel.objects.filter(doi=doi, ontology_id=ontology_id).first()
     if pub_link:
-        raise HttpResponseBadRequest("Publication link already exists.")
+        return HttpResponseBadRequest("Publication link already exists.")
 
     record = PubLinkModel()
     record.ontology_id = ontology_id
