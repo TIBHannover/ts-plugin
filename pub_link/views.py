@@ -11,6 +11,8 @@ from pub_link.models import PubLinkModel
 from datetime import datetime as _time
 from user.models import UserModel
 from user_service.middlewares.request import get_username_from_request
+from django.http import Http404
+from django.core.exceptions import PermissionDenied
 
 DOI_VALID_SOURCES = ["Crossref", "DataCite"]
 
@@ -57,6 +59,32 @@ def create_pub_link(request):
         return HttpResponseBadRequest("Something went wrong.")
 
     return create_json_response({"created": record.to_dict()})
+
+
+@error_handler_decorator
+@require_http_methods(["GET"])
+def get_pub_link(request, ontology_id):
+    ontology_id = ontology_id.strip()
+    ontology_id = ontology_id.lower()
+    pub_links = PubLinkModel.objects.filter(ontology_id=ontology_id).all()
+    return create_json_response(
+        {"publications": [pub_link.to_dict() for pub_link in pub_links]}
+    )
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["DELETE"])
+def delete_pub_link(request, id):
+    pub_link = PubLinkModel.objects.filter(id=id).first()
+    if not pub_link:
+        raise Http404("Publication link does not exist.")
+    username = get_username_from_request()
+    user = UserModel.get_by_username(username=username)
+    if pub_link.creator.id != user.id:
+        raise PermissionDenied("Not authorized")
+    pub_link.delete()
+    return create_json_response({"deleted": True})
 
 
 def get_citation_from_datacite(doi_id):
