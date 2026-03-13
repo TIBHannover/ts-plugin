@@ -2,6 +2,7 @@ from user.models import UserModel, RoleModel, SearchSettingModel, UserTokenModel
 from note.models import NoteModel, NoteCommentModel
 from collection.models import CollectionModel
 from term_set.models import TermSetModel, TermsModel
+from pub_link.models import PubLinkModel
 from django.conf import settings
 from datetime import datetime as _time
 import datetime
@@ -208,3 +209,14 @@ class TestHelper:
 
         TermsModel.objects.bulk_create(terms_to_save)
         return term_set.to_dict()
+
+    @staticmethod
+    def create_pub_link(user: UserModel, doi: str, ontology_id: str) -> dict:
+        pub_link = PubLinkModel()
+        pub_link.creator = user
+        pub_link.created_at = _time.now()
+        pub_link.doi = doi
+        pub_link.ontology_id = ontology_id
+        pub_link.citation = "Test Citation"
+        pub_link.save()
+        return pub_link.to_dict()
