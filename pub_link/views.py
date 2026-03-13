@@ -4,14 +4,13 @@ from user_service.libs.decorators import (
     error_handler_decorator,
 )
 from user_service.libs.utils import create_json_response
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, Http404, HttpResponseServerError
 import requests
 import json
 from pub_link.models import PubLinkModel
 from datetime import datetime as _time
 from user.models import UserModel
 from user_service.middlewares.request import get_username_from_request
-from django.http import Http404
 from django.core.exceptions import PermissionDenied
 
 DOI_VALID_SOURCES = ["Crossref", "DataCite"]
@@ -38,7 +37,7 @@ def create_pub_link(request):
     doi_id = get_doi_id_from_url(doi)
     doi_source = get_doi_source(doi_id)
     if not doi_source:
-        return create_json_response({"error": "Invalid DOI"})
+        raise HttpResponseBadRequest("Invalid DOI")
 
     if doi_source == "DataCite":
         citation = get_citation_from_datacite(doi_id)
@@ -48,6 +47,10 @@ def create_pub_link(request):
     if not citation:
         raise Exception("Issue in getting citation")
 
+    pub_link = PubLinkModel.objects.filter(doi=doi, ontology_id=ontology_id).first()
+    if pub_link:
+        raise HttpResponseBadRequest("Publication link already exists.")
+
     record = PubLinkModel()
     record.ontology_id = ontology_id
     record.doi = doi
@@ -56,7 +59,7 @@ def create_pub_link(request):
     record.creator = user
     record.save()
     if not record.id:
-        return HttpResponseBadRequest("Something went wrong.")
+        return HttpResponseServerError("Something went wrong.")
 
     return create_json_response({"created": record.to_dict()})
 
