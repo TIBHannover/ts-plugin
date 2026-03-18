@@ -20,6 +20,7 @@ class PubLinkModel(models.Model):
 
     def to_dict(self):
         return {
+            "creator": self.creator.id,
             "id": self.id,
             "doi": self.doi,
             "citation": self.citation,
