@@ -11,18 +11,26 @@ def fetch_all_datasets():
     dataset_list = resp.json()
     dataset_list = dataset_list["result"]
     chunk_size = 1000
-    for i in range(0, len(dataset_list), chunk_size):
-        dataset_titles = dataset_list[i : i + chunk_size]
-        group(fetch_dataset.s(url) for url in dataset_titles).apply_async()
+    tasks = [fetch_dataset_batch.s(dataset_list[i:i + chunk_size]) for i in range(0, len(dataset_list), chunk_size)]
+    group(tasks).apply_async()
 
 
-@shared_task(autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
-def fetch_dataset(dataset_title: str):
+@shared_task
+def fetch_dataset_batch(dataset_titles: list[str]):
+    session = requests.Session()
+    result = {}
+    for dataset_title in dataset_titles:
+        result[dataset_title] = fetch_dataset(dataset_title, session)
+    print(result)
+    return result
+
+
+def fetch_dataset(dataset_title: str, session: requests.Session):
     try:
         fetch_dataset_url = "{}/package_show?id={}".format(
             settings.NFDI4CHEM_SEARCH_SERVICE_ENDPOINT, dataset_title
         )
-        resp = requests.get(fetch_dataset_url)
+        resp = session.get(fetch_dataset_url)
         if resp.status_code != 200:
             raise Exception(
                 "Error fetching dataset({}): {}".format(dataset_title, resp.text)
@@ -33,7 +41,6 @@ def fetch_dataset(dataset_title: str):
         if measurements:
             for m in measurements:
                 curies.append(m.get("variableMeasured_propertyID"))
-        print(curies)
         return curies
     except Exception as e:
         print(e)
