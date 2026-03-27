@@ -6,6 +6,7 @@ class TermDatasetLinkModel(models.Model):
     curie = models.CharField()
     ontology_id = models.CharField()
     dataset_title = models.CharField()
+    repo_name = models.CharField(null=True)
 
     class Meta:
         db_table = "term_dataset_links"
@@ -16,6 +17,7 @@ class TermDatasetLinkModel(models.Model):
             "curie": self.curie,
             "ontology_id": self.ontology_id,
             "dataset_title": self.dataset_title,
+            "repo_name": self.repo_name,
         }
 
     def __str__(self):
