@@ -16,7 +16,7 @@ def get_term_dataset_links(request):
     )
 
 
-@require_http_methods(["DELETE"])
+@require_http_methods(["GET"])
 def delete_term_dataset_link(request):
     term_dataset_links = TermDatasetLinkModel.objects.all()
     term_dataset_links.delete()
