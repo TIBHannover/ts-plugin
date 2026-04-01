@@ -66,7 +66,7 @@ def fetch_dataset_batch(dataset_titles: list[str]):
             term_dataset_link = TermDatasetLinkModel(
                 created_at=_time.now(),
                 curie=curie,
-                ontology_id=onto_id,
+                ontology_id=onto_id.lower(),
                 dataset_title=dataset_title,
                 repo_name=repo_name,
             )
