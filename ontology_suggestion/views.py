@@ -153,3 +153,48 @@ def check_onto_purl_is_valid(request):
             }
         )
     return create_json_response({"valid": True})
+ 
+ # ontology adoption request 
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["POST"])
+def adopter_create(request):
+    data = json.loads(request.body)
+    print("DATA RECEIVED:", data)
+    email = data["email"]
+    username = data["username"]
+    ontoName = data["name"]
+    ontoPurl = data["purl"]
+
+    headers = {
+        "PRIVATE-TOKEN": settings.GITLAB_TS_USER_API_TOKEN,
+        "Content-Type": "application/json",
+    }
+
+    from .libs.actions import adopterSuggestionParams
+
+    parameters = adopterSuggestionParams(
+        requestBody=data,
+        username=username,
+        email=email,
+        ontoName=ontoName,
+        ontoPurl=ontoPurl,
+    )
+
+    parameters["confidential"] = False
+
+    url = settings.GITLAB_API_BASE_URL + "{}/issues".format(
+        urllib.parse.quote(settings.ONTOLOGY_SUGGESTION_REPO, safe="")
+    )
+
+    response = requests.post(url, json=parameters, headers=headers) 
+
+    print("GITLAB STATUS:", response.status_code)
+    print("GITLAB RESPONSE:", response.text)
+
+    if response.status_code != 201:
+        return HttpResponseServerError("Failed. Please try again later.")
+    print("ADOPTER ENDPOINT HIT")
+
+    return create_json_response({"response": "adopter request submitted"})

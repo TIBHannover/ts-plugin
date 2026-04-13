@@ -96,3 +96,31 @@ def ontologySuggestionParams(
         "description": issue_content,
         "labels": label,
     }, issue_content
+
+
+def adopterSuggestionParams(
+    requestBody,
+    username,
+    email,
+    ontoName,
+    ontoPurl,
+):
+    issue_content = "from: {} ({})\n\n".format(username, email)
+
+    issue_content += "Ontology Name: {}\nPURL: {}\n\n".format(
+        ontoName, ontoPurl
+    )
+
+    issue_content += "=== Adopter Information ===\n"
+    issue_content += "Type: {}\n".format(requestBody.get("adopter_type"))
+    issue_content += "Name: {}\n".format(requestBody.get("adopter_name"))
+    issue_content += "Usage: {}\n".format(requestBody.get("usage_description"))
+    issue_content += "Channel: {}\n".format(requestBody.get("usage_channel"))
+
+    title = "Ontology Adopter: {}".format(ontoName)
+
+    return {
+        "title": title,
+        "description": issue_content,
+        "labels": "ontology_adopter",
+    }
