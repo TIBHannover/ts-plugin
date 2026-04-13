@@ -36,7 +36,7 @@ services:
     volumes:
       - ./:/home/ts-app
     env_file:
-      - ./user_service/.env
+      - .env
     ports:
     - "8000:8000"
    
