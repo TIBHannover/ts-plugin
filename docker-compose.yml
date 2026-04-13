@@ -35,6 +35,11 @@ services:
       - db
     volumes:
       - ./:/home/ts-app
+    env_file:
+        - .env
+    environment:
+      TEST_VAR: hello123
+
 
   nginx:
     container_name: nginx
