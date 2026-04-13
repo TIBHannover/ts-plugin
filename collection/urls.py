@@ -10,4 +10,5 @@ urlpatterns = [
     path('get_list/', views.get_list, name="get_list"),
     path('update/<int:collection_id>/', csrf_exempt(views.update), name="update"),
     path('delete/<int:collection_id>/', csrf_exempt(views.delete), name="delete"),
+    path('bioregistry_collections/', views.get_bioregistry_collections, name="bioregistry_collections")
 ]

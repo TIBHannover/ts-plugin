@@ -6,5 +6,6 @@ devnote
 .db.env
 .idea
 .bash_history
+.env.back
 
 
