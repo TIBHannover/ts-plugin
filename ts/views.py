@@ -28,6 +28,7 @@ def get(request):
     page_size = page_size if page_size > 0 else 20
     groupBy = groupBy.lower()
     groupBy = groupBy if groupBy in ["dataset", "term"] else "dataset"
+    repos = links.values_list("repo_name", flat=True).distinct()
     if groupBy == "dataset":
         q = links.values_list("dataset_title", flat=True).distinct()
         total = q.count()
@@ -39,6 +40,7 @@ def get(request):
         return create_json_response(
             {
                 "links": result,
+                "repositories": repos,
                 "total": total,
                 "page": page,
                 "size": page_size,
@@ -56,6 +58,7 @@ def get(request):
     return create_json_response(
         {
             "links": result,
+            "repositories": repos,
             "total": total,
             "page": page,
             "size": page_size,
