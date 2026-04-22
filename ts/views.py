@@ -21,6 +21,10 @@ def get(request):
         **({"repo_name": repo_name} if repo_name else {}),
     )
     total = links.count()
+    page = int(page)
+    page_size = int(page_size)
+    page = page if page > 0 else 1
+    page_size = page_size if page_size > 0 else 20
     links = links.order_by("-created_at")[(page - 1) * page_size : page * page_size]
     return create_json_response(
         {
