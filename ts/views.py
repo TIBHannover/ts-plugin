@@ -28,7 +28,6 @@ def get(request):
     page_size = page_size if page_size > 0 else 20
     groupBy = groupBy.lower()
     groupBy = groupBy if groupBy in ["dataset", "term"] else "dataset"
-    repos = links.values_list("repo_name", flat=True).distinct()
     if groupBy == "dataset":
         q = links.values_list("dataset_title", flat=True).distinct()
         total = q.count()
@@ -40,7 +39,6 @@ def get(request):
         return create_json_response(
             {
                 "links": result,
-                "repositories": repos,
                 "total": total,
                 "page": page,
                 "size": page_size,
@@ -58,12 +56,26 @@ def get(request):
     return create_json_response(
         {
             "links": result,
-            "repositories": repos,
             "total": total,
             "page": page,
             "size": page_size,
         }
     )
+
+
+@require_http_methods(["GET"])
+def get_repos_list(request):
+    curie = request.GET.get("curie")
+    ontology_id = request.GET.get("ontology_id")
+    repo_name = request.GET.get("repo_name")
+    links = TermDatasetLinkModel.objects.filter(
+        **({"curie": curie} if curie else {}),
+        **({"ontology_id": ontology_id.lower()} if ontology_id else {}),
+        **({"repo_name": repo_name} if repo_name else {}),
+    )
+    repos = links.values_list("repo_name", flat=True).distinct()
+    repos = [r for r in repos]
+    return create_json_response({"repositories": repos})
 
 
 @require_http_methods(["GET"])
