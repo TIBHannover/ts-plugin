@@ -48,11 +48,11 @@ def get(request):
     # groupBy == "term"
     q = links.values_list("curie", flat=True).distinct()
     total = q.count()
-    paged_titles = list(q[(page - 1) * page_size : page * page_size])
-    rows = links.filter(curie__in=paged_titles)
+    paged_curies = list(q[(page - 1) * page_size : page * page_size])
+    rows = links.filter(curie__in=paged_curies)
     result = DefaultDict(list)
     for row in rows:
-        result[row.dataset_title].append(row.to_dict())
+        result[row.curie].append(row.to_dict())
     return create_json_response(
         {
             "links": result,
