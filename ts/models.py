@@ -4,8 +4,10 @@ from django.db import models
 class TermDatasetLinkModel(models.Model):
     created_at = models.DateTimeField()
     curie = models.CharField()
+    term_label = models.CharField(null=True)
     ontology_id = models.CharField()
     dataset_title = models.CharField()
+    dataset_description = models.TextField(null=True)
     repo_name = models.CharField(null=True)
 
     class Meta:
@@ -18,6 +20,8 @@ class TermDatasetLinkModel(models.Model):
             "ontology_id": self.ontology_id,
             "dataset_title": self.dataset_title,
             "repo_name": self.repo_name,
+            "dataset_description": self.dataset_description,
+            "term_label": self.term_label,
         }
 
     def __str__(self):
