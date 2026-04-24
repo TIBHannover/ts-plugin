@@ -42,20 +42,29 @@ def fetch_dataset_batch(dataset_titles: list[str]):
     session = requests.Session()
     result = {}
     for dataset_title in dataset_titles:
-        curies, repo_name = fetch_dataset_handler(dataset_title, session)
+        curies, terms_labels, repo_name, dataset_description = fetch_dataset_handler(
+            dataset_title, session
+        )
         if not curies:
             continue
-        result[dataset_title] = {"curies": curies, "repo_name": repo_name}
+        result[dataset_title] = {
+            "curies": curies,
+            "repo_name": repo_name,
+            "terms_labels": terms_labels,
+            "dataset_description": dataset_description,
+        }
 
     for dataset_title, metadata in result.items():
         curies = metadata["curies"]
         repo_name = metadata["repo_name"]
+        i = 0
         for curie in curies:
             curie = curie.strip()
             existing = TermDatasetLinkModel.objects.filter(
                 curie=curie, dataset_title=dataset_title
             ).first()
             if existing:
+                i += 1
                 continue
             if ":" in curie:
                 onto_id = curie.split(":")[0]
@@ -69,15 +78,17 @@ def fetch_dataset_batch(dataset_titles: list[str]):
                 ontology_id=onto_id.lower(),
                 dataset_title=dataset_title,
                 repo_name=repo_name,
+                dataset_description=metadata["dataset_description"],
+                term_label=metadata["terms_labels"][i],
             )
             term_dataset_link.save()
+            i += 1
     print("Finished a batch.")
 
 
 def fetch_dataset_handler(dataset_title: str, session: requests.Session):
     try:
-        curies, repo_name = fetch_dataset(dataset_title, session)
-        return curies, repo_name
+        return fetch_dataset(dataset_title, session)
     except Exception as e:
         print(e)
         return [], "unknown"
@@ -129,10 +140,12 @@ def fetch_dataset(dataset_title: str, session: requests.Session):
 def extract_metadata_from_dataset(dataset):
     measurements = dataset.get("variableMeasured")
     curies = []
+    terms_labels = []
     if measurements:
         for m in measurements:
             curies.append(m.get("variableMeasured_propertyID"))
+            terms_labels.append(m.get("variableMeasured_name"))
     repo_name = dataset.get("organization", {}).get("title")
     if not repo_name:
         repo_name = "unknown"
-    return curies, repo_name
+    return curies, terms_labels, repo_name, dataset.get("notes", "N/A")
