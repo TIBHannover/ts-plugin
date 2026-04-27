@@ -17,8 +17,14 @@ def get(request):
     page = request.GET.get("page", 1)
     page_size = request.GET.get("size", 20)
     groupBy = request.GET.get("groupBy", "dataset")
+    if curie:
+        curies = [curie]
+        if "_" in curie:
+            curies.append(":".join(curie.split("_")))
+        elif ":" in curie:
+            curies.append("_".join(curie.split(":")))
     links = TermDatasetLinkModel.objects.filter(
-        **({"curie": curie} if curie else {}),
+        **({"curie__in": curies} if curie else {}),
         **({"ontology_id": ontology_id.lower()} if ontology_id else {}),
         **({"repo_name": repo_name} if repo_name else {}),
     )
