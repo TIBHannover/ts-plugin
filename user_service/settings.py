@@ -94,6 +94,8 @@ INSTALLED_APPS = [
     "admin_cli",
     "term_set",
     "pub_link",
+    "ts",
+    "django_celery_beat",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +176,9 @@ STATIC_URL = "/ts-plugin/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
+CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
@@ -188,8 +193,6 @@ NFDI4CHEM_GITLAB_ADMIN_IDS = env("NFDI4CHEM_GITLAB_ADMIN_IDS", default=None)
 SYSTEM_EMAIL = env("SYSTEM_EMAIL", default=None)
 EMAIL_SERVER_HOST = env("EMAIL_SERVER_HOST", default=None)
 EMAIL_SERVER_PORT = env("EMAIL_SERVER_PORT", default=None)
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=None)
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=None)
 DEFAULT_FRONTEND_REDIRECT_URL = env("DEFAULT_FRONTEND_REDIRECT_URL", default=None)
 DEFAULT_GITHUB_CLIENT_ID = env("DEFAULT_GITHUB_CLIENT_ID", default=None)
 DEFAULT_GITHUB_CLIENT_SECRET = env("DEFAULT_GITHUB_CLIENT_SECRET", default=None)
@@ -234,3 +237,6 @@ GITHUB_LOGIN_CODE = env("GITHUB_LOGIN_CODE", default=None)
 ORCID_LOGIN_CODE = env("ORCID_LOGIN_CODE", default=None)
 STATS_API_TOKEN = env("STATS_API_TOKEN", default=None)
 BIOREGISTRY_ENDPOINT = env("BIOREGISTRY_ENDPOINT", default=None)
+NFDI4CHEM_SEARCH_SERVICE_ENDPOINT = env(
+    "NFDI4CHEM_SEARCH_SERVICE_ENDPOINT", default=None
+)
