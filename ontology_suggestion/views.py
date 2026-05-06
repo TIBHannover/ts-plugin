@@ -126,7 +126,7 @@ def check_onto_purl_is_valid(request):
     data = request.GET
     purl = data["purl"]
     try:
-        response = requests.get(purl)
+        response = requests.head(purl, allow_redirects=True, timeout=10)
     except:
         return create_json_response(
             {"valid": False, "reason": "PURL is not a resolvable URL"}
@@ -141,9 +141,18 @@ def check_onto_purl_is_valid(request):
         "text/turtle",
         "application/x-turtle",
         "application/rdf+xml",
-        "text/xml",
-        "text/plain",
         "application/owl+xml",
+        "application/xml",
+        "text/xml",
+        "application/n-triples",
+        "application/n-quads",
+        "text/plain",
+        "application/ld+json",
+        "application/json",
+        "application/xhtml+xml",
+        "text/html",
+        "application/trig",
+        "application/octet-stream",
     ]
     if not any(ctype in content_type for ctype in allowed_types):
         return create_json_response(
