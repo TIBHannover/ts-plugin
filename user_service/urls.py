@@ -34,6 +34,7 @@ urlpatterns = [
     path("collection/", include("collection.urls")),
     path("admin/", include("admin.urls")),
     path("term_set/", include("term_set.urls")),
+    path("ts/", include("ts.urls")),
     path(
         "swagger.<format>/", schema_view.without_ui(cache_timeout=0), name="schema-json"
     ),

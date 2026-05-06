@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     "admin_cli",
     "term_set",
     "pub_link",
+    "ts",
 ]
 
 MIDDLEWARE = [
@@ -234,3 +235,6 @@ GITHUB_LOGIN_CODE = env("GITHUB_LOGIN_CODE", default=None)
 ORCID_LOGIN_CODE = env("ORCID_LOGIN_CODE", default=None)
 STATS_API_TOKEN = env("STATS_API_TOKEN", default=None)
 BIOREGISTRY_ENDPOINT = env("BIOREGISTRY_ENDPOINT", default=None)
+NFDI4CHEM_SEARCH_SERVICE_ENDPOINT = env(
+    "NFDI4CHEM_SEARCH_SERVICE_ENDPOINT", default=None
+)
