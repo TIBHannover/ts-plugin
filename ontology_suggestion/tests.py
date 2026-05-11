@@ -70,3 +70,34 @@ class TestOntologySuggestion(TestCase, BaseTest):
         self.assertEqual(
             response.json()["_result"]["response"], "ontology is suggested successfully"
         )
+    def test_adopter_request_should_success(self):
+        headers = copy.copy(self.github_request_headers)
+
+        adopter_request = {
+            "email": "me@me",
+            "username": "me",
+            "name": "test_ontology",
+            "purl": "https://purl.obolibrary.org/obo/sepio.owl",
+            "adopter_type": "project",
+            "adopter_name": "Test Adopter",
+            "adopter_alt_name": "",
+            "adopter_pid": "",
+            "adopter_homepage": "",
+            "provider_name": "",
+            "provider_pid": "",
+            "usage_description": "Testing ontology adoption",
+            "usage_channel": "API",
+        }
+
+        url = "/ontologysuggestion/adopter_create/"
+
+        self.client.cookies["jwt"] = self.github_user_jwt
+
+        response = self.client.post(
+            url,
+            headers=headers,
+            data=json.dumps(adopter_request),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
