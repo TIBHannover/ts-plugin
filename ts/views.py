@@ -1,7 +1,7 @@
 from typing import DefaultDict
 from django.views.decorators.http import require_http_methods
 from user_service.libs.utils import create_json_response
-from ts.models import TermDatasetLinkModel
+from ts.models import TermDatasetLinkModel, HarvestFailureModel
 
 
 @require_http_methods(["GET"])
@@ -97,3 +97,11 @@ def delete_term_dataset_link(request):
     term_dataset_links = TermDatasetLinkModel.objects.all()
     term_dataset_links.delete()
     return create_json_response({"response": "Deleted all term dataset links"})
+
+
+@require_http_methods(["GET"])
+def get_failed_harvests(request):
+    failed_harvests = HarvestFailureModel.objects.all()
+    return create_json_response(
+        {"failed_harvests": [f.to_dict() for f in failed_harvests]}
+    )
