@@ -2,6 +2,7 @@ from django.core.exceptions import BadRequest
 from django.conf import settings
 import urllib
 import requests
+from datetime import date
 from .shape_test import test as test_onto_shape
 
 
@@ -96,3 +97,36 @@ def ontologySuggestionParams(
         "description": issue_content,
         "labels": label,
     }, issue_content
+
+
+def adopterSuggestionParams(
+    requestBody,
+    username,
+    email,
+    ontoName,
+    ontoPurl,
+):
+    today = date.today().isoformat()
+    issue_content = "from: {} ({})\n\n".format(username, email)
+
+    issue_content += "Ontology Name: {}\nPURL: {}\n\n".format(ontoName, ontoPurl)
+
+    issue_content += "=== Adopter Information ===\n"
+    issue_content += "\nType: {}\n".format(requestBody.get("adopter_type"))
+    issue_content += "\nName: {}\n".format(requestBody.get("adopter_name"))
+    issue_content += "\nUsage: {}\n".format(requestBody.get("usage_description"))
+    issue_content += "\nChannel: {}\n".format(requestBody.get("usage_channel"))
+
+    issue_content += "\nusageReportMetadata:\n"
+    issue_content += "{\n"
+    issue_content += '  "created": "{}",\n'.format(today)
+    issue_content += '  "source": "TIB"\n'
+    issue_content += "}\n"
+
+    title = "Ontology Adopter: {}".format(ontoName)
+
+    return {
+        "title": title,
+        "description": issue_content,
+        "labels": "ontology_adopter",
+    }

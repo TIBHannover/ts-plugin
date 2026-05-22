@@ -67,20 +67,7 @@ def error_handler_decorator(func):
         except Http404 as e:
             return JsonResponse({"_result": str(e)}, status=404)
 
-        # except HTTPException as e:
-        #     # if current_app.config.get("DEBUG_MODDE"):
-        #     # raise
-        #     response = HttpResponse(e.get_response(), status=e.code)
-        #     # logging.debug(e.get_response())
-        #     print(e.get_response(), flush=True)
-        #     return response
-
         except Exception as e:
-            # raise
-            # if current_app.config.get("DEBUG_MODDE"):
-            # raise
-            # logging.error(e)
-            raise
             print(e, flush=True)
             response = HttpResponse(
                 str(e),
