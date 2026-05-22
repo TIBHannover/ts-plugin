@@ -35,11 +35,6 @@ services:
       - db
     volumes:
       - ./:/home/ts-app
-    env_file:
-      - .env
-    ports:
-    - "8000:8000"
-   
 
   nginx:
     container_name: nginx

@@ -9,7 +9,6 @@ from .libs.shape_test import test as test_onto_shap
 from django.views.decorators.http import require_http_methods
 import json
 from django.conf import settings
-from django.core.exceptions import BadRequest
 from user_service.middlewares.client_id import get_client_id_from_request
 from django.http import HttpResponseServerError
 from .libs.actions import collectionSuggestionParams, ontologySuggestionParams
@@ -153,15 +152,13 @@ def check_onto_purl_is_valid(request):
             }
         )
     return create_json_response({"valid": True})
- 
- # ontology adoption request 
 
-@error_handler_decorator
+
+# @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
 def adopter_create(request):
     data = json.loads(request.body)
-    print("DATA RECEIVED:", data)
     email = data["email"]
     username = data["username"]
     ontoName = data["name"]
@@ -182,19 +179,14 @@ def adopter_create(request):
         ontoPurl=ontoPurl,
     )
 
-    parameters["confidential"] = False
+    parameters["confidential"] = True
 
     url = settings.GITLAB_API_BASE_URL + "{}/issues".format(
         urllib.parse.quote(settings.ONTOLOGY_SUGGESTION_REPO, safe="")
     )
 
-    response = requests.post(url, json=parameters, headers=headers) 
-
-    print("GITLAB STATUS:", response.status_code)
-    print("GITLAB RESPONSE:", response.text)
-
+    response = requests.post(url, json=parameters, headers=headers)
     if response.status_code != 201:
         return HttpResponseServerError("Failed. Please try again later.")
-    print("ADOPTER ENDPOINT HIT")
 
     return create_json_response({"response": "adopter request submitted"})
