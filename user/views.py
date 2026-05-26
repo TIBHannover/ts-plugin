@@ -81,7 +81,30 @@ def login(request):
             algorithm="HS256",
         )
         auth_response_dict["csrf_token"] = csrf_token
-        # remove the token from the payload since we handle it in the cookie
+        # remove the token from the payload since jwt already has it
+        auth_response_dict.pop("token", None)
+        auth_response_dict["jwt"] = jwt_token
+        response = JsonResponse({"_result": auth_response_dict})
+        return response
+    return create_json_response({"issue": "auth is rejected"})
+
+
+@error_handler_decorator
+@require_http_methods(["GET"])
+def login_for_widget(request):
+    _time = datetime.datetime
+    auth_object_dict = get_headers_dict()
+    if auth_object_dict["client_ts_id"] not in settings.CLIENT_TERMINOLOGY_SERVICES:
+        return create_json_response({"issue": "unkown client id"})
+    auth = Auth(**auth_object_dict)
+    auth.abort_if_not_auth_provider()
+    auth_response_dict = auth.authenticate()
+    if auth_response_dict:
+        expires = _time.now(datetime.UTC) + datetime.timedelta(24 * 60 * 7)  # a week
+        auth_response_dict["exp"] = expires
+        jwt_token = jwt.encode(
+            auth_response_dict, settings.SECRET_KEY, algorithm="HS256"
+        )
         auth_response_dict.pop("token", None)
         auth_response_dict["jwt"] = jwt_token
         response = JsonResponse({"_result": auth_response_dict})
