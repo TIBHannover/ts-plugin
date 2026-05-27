@@ -35,6 +35,7 @@ CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_SECURE = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:6006",
     "http://localhost:8080",
     "http://localhost",
     "http://127.0.0.1:3000",
@@ -114,8 +115,11 @@ MIDDLEWARE = [
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-snowflake",
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
     }
 }
 

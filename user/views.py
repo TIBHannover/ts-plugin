@@ -133,8 +133,9 @@ def send_term_request(request):
 
     now = datetime.datetime.now()
     interval = state["interval"]
-
-    if now - state["last_poll"] < interval:
+    if state["last_poll"] == 0:
+        state["last_poll"] = now
+    elif now - state["last_poll"] < datetime.timedelta(seconds=interval):
         return create_json_response({"status": "pending"})
 
     state["last_poll"] = now
@@ -154,6 +155,9 @@ def send_term_request(request):
     data = response.json()
     if "access_token" in data:
         token = data["access_token"]
+        payload["repo_url"] = (
+            "https://api.github.com/repos/TIBHannover/VibrationalSpectroscopyOntology/issues"
+        )
         createed_issue_url = submit_term_request(payload, token)
         if not createed_issue_url:
             return create_json_response({"status": "denied"})
@@ -168,8 +172,8 @@ def send_term_request(request):
 
     if error == "slow_down":
         state["interval"] += 5
-        cache.set(f"github_device:{device_code}", state, timeout=900)
-        return JsonResponse({"status": "slow_down"})
+        cache.set(f"github_device:{device_code}", state, timeout=300)
+        return create_json_response({"status": "slow_down"})
 
     if error == "expired_token" or error == "access_denied":
         cache.delete(f"github_device:{device_code}")

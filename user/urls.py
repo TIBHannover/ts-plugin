@@ -23,4 +23,10 @@ urlpatterns = [
     path("apikey/update/", csrf_exempt(views.update_api_key), name="update_api_key"),
     path("apikey/delete/", csrf_exempt(views.delete_api_key), name="delete_api_key"),
     path("apikey/get/", csrf_exempt(views.get_api_keys), name="get_api_keys"),
+    path("login/get_code/", views.login_with_device_flow, name="get_login_code"),
+    path(
+        "login/send_term_request/",
+        csrf_exempt(views.send_term_request),
+        name="send_term_request",
+    ),
 ]
