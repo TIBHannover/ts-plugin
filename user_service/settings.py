@@ -112,6 +112,13 @@ MIDDLEWARE = [
     "user_service.middlewares.cache.DisableCacheMiddleware",
 ]
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+    }
+}
+
 ROOT_URLCONF = "user_service.urls"
 
 TEMPLATES = [
