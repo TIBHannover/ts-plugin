@@ -31,6 +31,7 @@ def fetch_all_failed_datasets():
     failed = HarvestFailureModel.objects.all()
     dataset_list = [f.dataset_title for f in failed]
     HarvestFailureModel.objects.all().delete()
+    print(dataset_list[:10], flush=True)
     chunk_size = 1000
     tasks = [
         fetch_dataset_batch.s(dataset_list[i : i + chunk_size])
@@ -62,6 +63,8 @@ def fetch_dataset_batch(dataset_titles: list[str]):
         }
 
     for dataset_title, metadata in result.items():
+        if metadata.get("type") == "molecule":
+            continue
         curies = metadata["curies"]
         repo_name = metadata["repo_name"]
         i = 0

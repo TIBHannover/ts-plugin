@@ -33,7 +33,8 @@ services:
       - microservice
     links:
       - db
-  #    volumes:
+    volumes:
+      - ../logs:/app/logs
   #      - ./:/home/ts-app
 
   redis:
