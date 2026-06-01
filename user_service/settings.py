@@ -185,37 +185,37 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOG_DIR = Path("./logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "file": {
-            "class": "logging.FileHandler",
-            "filename": LOG_DIR / "ts-plugin.log",
-        },
-    },
-    "root": {
-        "handlers": ["file"],
-        "level": "ERROR",
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django.request": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django.server": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": False,
-        },
-    },
-}
+# LOGGING = {
+#     "version": 1,
+#     "disable_existing_loggers": False,
+#     "handlers": {
+#         "file": {
+#             "class": "logging.FileHandler",
+#             "filename": LOG_DIR / "ts-plugin.log",
+#         },
+#     },
+#     "root": {
+#         "handlers": ["file"],
+#         "level": "ERROR",
+#     },
+#     "loggers": {
+#         "django": {
+#             "handlers": ["file"],
+#             "level": "INFO",
+#             "propagate": False,
+#         },
+#         "django.request": {
+#             "handlers": ["file"],
+#             "level": "INFO",
+#             "propagate": False,
+#         },
+#         "django.server": {
+#             "handlers": ["file"],
+#             "level": "INFO",
+#             "propagate": False,
+#         },
+#     },
+# }
 
 
 SUB_PATH = env("SUB_PATH", default="")
