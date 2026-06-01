@@ -107,6 +107,8 @@ def login_with_device_flow(request):
         },
         timeout=10,
     )
+    print(response.text)
+    print(response.json())
     response.raise_for_status()
     response = response.json()
     cache.set(
