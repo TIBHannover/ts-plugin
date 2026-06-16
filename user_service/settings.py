@@ -1,11 +1,15 @@
 from pathlib import Path
 import environ
+import logging
 import os
+import sys
 from corsheaders.defaults import default_methods
 from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+LOG_DIR = BASE_DIR / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
 
 
 env = environ.Env()
@@ -14,6 +18,59 @@ environ.Env.read_env()
 SECRET_KEY = env("SECRET_KEY")
 
 DEBUG = env("DEBUG_MODE", default=False)
+
+
+class LoggerWriter:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+
+    def write(self, message):
+        message = message.rstrip()
+        if message:
+            self.logger.log(self.level, message)
+
+    def flush(self):
+        pass
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "service": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "service_file": {
+            "class": "logging.FileHandler",
+            "filename": LOG_DIR / "service.log",
+            "formatter": "service",
+            "level": "ERROR",
+        },
+    },
+    "root": {
+        "handlers": ["service_file"],
+        "level": "ERROR",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["service_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "service.print": {
+            "handlers": ["service_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
+sys.stdout = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
+sys.stderr = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
 
 
 ALLOWED_HOSTS = [

@@ -33,6 +33,8 @@ services:
       - microservice
     links:
       - db
+    volumes:
+      - service_logs:/home/ts-app/logs
   #    volumes:
   #      - ./:/home/ts-app
 
@@ -53,12 +55,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: celery -A user_service worker --loglevel=info --concurrency=20
+    command: celery -A user_service worker --loglevel=error --concurrency=20
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - service_logs:/home/ts-app/logs
     networks:
       - microservice
 
@@ -67,12 +71,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: celery -A user_service beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A user_service beat --loglevel=error --scheduler django_celery_beat.schedulers:DatabaseScheduler
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - service_logs:/home/ts-app/logs
     networks:
       - microservice
 
@@ -113,3 +119,6 @@ services:
 networks:
   microservice:
   logger:
+
+volumes:
+  service_logs:
