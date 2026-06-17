@@ -94,6 +94,9 @@ services:
     networks:
       - microservice
 
+    volumes:
+      - ./staticfiles:/staticfiles
+
   # Monitor metrics such as cpu, memory, disk usage --> send to--> prometheus
   node-exporter:
     image: prom/node-exporter:latest
