@@ -57,7 +57,10 @@ def is_system_admin():
 @error_handler_decorator
 @require_http_methods(["GET"])
 def metrics(request):
-    if settings.STATS_API_TOKEN != get_access_token_for_stats():
+    if (
+        not settings.STATS_API_TOKEN
+        or settings.STATS_API_TOKEN != get_access_token_for_stats()
+    ):
         raise Http404("not found")
     stats = Stats()
     stats.run()
