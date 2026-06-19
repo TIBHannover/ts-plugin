@@ -5,7 +5,7 @@ from django.conf import settings
 import urllib.parse
 import requests
 from user.models import UserModel
-from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Gauge
 
 
 class StatsShape:

@@ -12,9 +12,10 @@ from user_service.middlewares.client_id import get_client_id_from_request
 import json
 from user_service.libs.utils import create_json_response
 from user_service.middlewares.request import get_access_token_for_stats
-from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
-from django.http import HttpResponse
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from django.http import HttpResponse, Http404
 from admin.stats import Stats
+from user_service import settings
 
 
 @error_handler_decorator
@@ -56,6 +57,8 @@ def is_system_admin():
 @error_handler_decorator
 @require_http_methods(["GET"])
 def metrics(request):
+    if settings.STATS_API_TOKEN != get_access_token_for_stats():
+        raise Http404("not found")
     stats = Stats()
     stats.run()
     return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
