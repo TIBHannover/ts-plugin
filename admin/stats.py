@@ -10,6 +10,7 @@ from prometheus_client import Gauge
 
 class StatsShape:
     def __init__(self):
+        self.user_count = 0
         self.note_count = 0
         self.comment_count = 0
         self.collection_count = 0
@@ -22,6 +23,7 @@ class StatsShape:
 
     def to_dict(self):
         return {
+            "user_count": self.user_count,
             "note_count": self.note_count,
             "comment_count": self.comment_count,
             "collection_count": self.collection_count,
@@ -59,7 +61,7 @@ class Stats:
 
     def __calculate_stats(self, client_ts):
         users = UserModel.objects.filter(client_ts=client_ts).all()
-        self.stats[client_ts].note_count = len(users)
+        self.stats[client_ts].user_count = len(users)
         note_count = 0
         comment_count = 0
         collection_count = 0
