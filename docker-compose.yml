@@ -113,17 +113,16 @@ services:
       - logger
 
   # Monitor its logs and send them to Loki
-  # alloy:
-  #   image: grafana/alloy:latest
-  #   command:
-  #     - run
-  #     - /etc/alloy/config.alloy
-  #   volumes:
-  #     - ./alloy:/etc/alloy:ro
-  #     - /var/lib/docker/containers:/var/lib/docker/containers:ro
-  #   restart: unless-stopped
-  #   networks:
-  #     - logger
+  alloy:
+    image: grafana/alloy:latest
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./docker/alloy:/etc/alloy:ro
+    restart: unless-stopped
+    networks:
+      - logger
 
 networks:
   microservice:
