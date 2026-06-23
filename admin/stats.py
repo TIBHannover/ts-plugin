@@ -39,7 +39,7 @@ class StatsShape:
 class Stats:
     def __init__(self):
         self.stats_gauge = Gauge(
-            "app_stat_value",
+            "ts-plugin_stats",
             "TS-Plugin service stats",
             ["key"],
         )
