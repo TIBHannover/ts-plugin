@@ -37,12 +37,8 @@ class StatsShape:
 
 
 class Stats:
-    def __init__(self):
-        self.stats_gauge = Gauge(
-            "ts-plugin_stats",
-            "TS-Plugin service stats",
-            ["key"],
-        )
+    def __init__(self, gauge):
+        self.stats_gauge = gauge
         self.projects = ["nfdi4chem", "general", "nfdi4ing"]
         self.stats = {
             "nfdi4chem": StatsShape(),

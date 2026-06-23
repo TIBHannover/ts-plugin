@@ -12,10 +12,16 @@ from user_service.middlewares.client_id import get_client_id_from_request
 import json
 from user_service.libs.utils import create_json_response
 from user_service.middlewares.request import get_access_token_for_stats
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, Gauge
 from django.http import HttpResponse, Http404
 from admin.stats import Stats
 from user_service import settings
+
+app_stats_gauge = Gauge(
+    "ts_plugin_stats",
+    "TS-Plugin service stats",
+    ["key"],
+)
 
 
 @error_handler_decorator
@@ -62,6 +68,6 @@ def metrics(request):
         or settings.STATS_API_TOKEN != get_access_token_for_stats()
     ):
         raise Http404("not found")
-    stats = Stats()
+    stats = Stats(gauge=app_stats_gauge)
     stats.run()
     return HttpResponse(generate_latest(), content_type=CONTENT_TYPE_LATEST)
