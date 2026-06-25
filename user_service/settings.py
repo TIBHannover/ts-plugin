@@ -69,8 +69,8 @@ LOGGING = {
     },
 }
 
-sys.stdout = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
-sys.stderr = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
+# sys.stdout = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
+# sys.stderr = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
 
 
 ALLOWED_HOSTS = [
