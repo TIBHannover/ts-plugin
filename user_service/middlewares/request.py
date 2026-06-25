@@ -46,7 +46,10 @@ def get_access_token_for_stats():
     # Authorization token is not jwt format in this particular case. is directly the access token
     request = getattr(_current_context, "request", None)
     if request:
-        return request.headers.get("Authorization")
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            parts = auth_header.split("Bearer ")
+            return parts[1].strip()
     return "default"
 
 

@@ -9,7 +9,6 @@ from .libs.shape_test import test as test_onto_shap
 from django.views.decorators.http import require_http_methods
 import json
 from django.conf import settings
-from django.core.exceptions import BadRequest
 from user_service.middlewares.client_id import get_client_id_from_request
 from django.http import HttpResponseServerError
 from .libs.actions import collectionSuggestionParams, ontologySuggestionParams
@@ -126,7 +125,7 @@ def check_onto_purl_is_valid(request):
     data = request.GET
     purl = data["purl"]
     try:
-        response = requests.get(purl)
+        response = requests.head(purl, allow_redirects=True, timeout=10)
     except:
         return create_json_response(
             {"valid": False, "reason": "PURL is not a resolvable URL"}
@@ -141,9 +140,18 @@ def check_onto_purl_is_valid(request):
         "text/turtle",
         "application/x-turtle",
         "application/rdf+xml",
-        "text/xml",
-        "text/plain",
         "application/owl+xml",
+        "application/xml",
+        "text/xml",
+        "application/n-triples",
+        "application/n-quads",
+        "text/plain",
+        "application/ld+json",
+        "application/json",
+        "application/xhtml+xml",
+        "text/html",
+        "application/trig",
+        "application/octet-stream",
     ]
     if not any(ctype in content_type for ctype in allowed_types):
         return create_json_response(
@@ -153,3 +161,41 @@ def check_onto_purl_is_valid(request):
             }
         )
     return create_json_response({"valid": True})
+
+
+# @error_handler_decorator
+@authentication_required
+@require_http_methods(["POST"])
+def adopter_create(request):
+    data = json.loads(request.body)
+    email = data["email"]
+    username = data["username"]
+    ontoName = data["name"]
+    ontoPurl = data["purl"]
+
+    headers = {
+        "PRIVATE-TOKEN": settings.GITLAB_TS_USER_API_TOKEN,
+        "Content-Type": "application/json",
+    }
+
+    from .libs.actions import adopterSuggestionParams
+
+    parameters = adopterSuggestionParams(
+        requestBody=data,
+        username=username,
+        email=email,
+        ontoName=ontoName,
+        ontoPurl=ontoPurl,
+    )
+
+    parameters["confidential"] = True
+
+    url = settings.GITLAB_API_BASE_URL + "{}/issues".format(
+        urllib.parse.quote(settings.ONTOLOGY_SUGGESTION_REPO, safe="")
+    )
+
+    response = requests.post(url, json=parameters, headers=headers)
+    if response.status_code != 201:
+        return HttpResponseServerError("Failed. Please try again later.")
+
+    return create_json_response({"response": "adopter request submitted"})

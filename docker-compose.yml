@@ -35,7 +35,6 @@ services:
       - db
     volumes:
       - ../logs:/app/logs
-  #      - ./:/home/ts-app
 
   redis:
     image: redis:7-alpine
@@ -54,12 +53,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: celery -A user_service worker --loglevel=info --concurrency=20
+    command: celery -A user_service worker --loglevel=error --concurrency=20
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - service_logs:/home/ts-app/logs
     networks:
       - microservice
 
@@ -68,12 +69,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: celery -A user_service beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A user_service beat --loglevel=error --scheduler django_celery_beat.schedulers:DatabaseScheduler
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - service_logs:/home/ts-app/logs
     networks:
       - microservice
 
@@ -88,6 +91,40 @@ services:
       - "0.0.0.0:80:80"
     networks:
       - microservice
+      - logger
 
+    volumes:
+      - ./staticfiles:/staticfiles
+
+  # Monitor metrics such as cpu, memory, disk usage --> send to--> prometheus
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - "--path.rootfs=/host"
+    networks:
+      - logger
+
+  # Monitor its logs and send them to Loki
+  # alloy:
+  #   image: grafana/alloy:latest
+  #   command:
+  #     - run
+  #     - /etc/alloy/config.alloy
+  #   volumes:
+  #     - ./docker/alloy:/etc/alloy:ro
+  #   restart: unless-stopped
+  #   networks:
+  #     - logger
+  #
 networks:
   microservice:
+  logger:
+
+volumes:
+  service_logs:

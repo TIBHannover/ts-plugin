@@ -1,29 +1,18 @@
-from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import json
 import uuid
 
 
-class TestTermSet(TestCase, BaseTest):
+class TestTermSet(BaseTest):
     @classmethod
     def setUpTestData(self) -> None:
+        super().setUpTestData()
         self.creation_url = "/term_set/create/"
         self.delete_url = "/term_set/delete/"
         self.update_url = "/term_set/update/"
         self.base_url = "/term_set/"
         self.get_url = "/term_set/get/"
-        self.orcidUser = TestHelper.createOrcidUser()
-        self.gitHubUser = TestHelper.createGitHubUser()
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.gitHubUser.username, self.github_access_token
-        )
-        self.orcid_user_jwt = TestHelper.generate_jwt(
-            {},
-            self.orcidUser.username,
-            self.orcid_access_token,
-            self.orcid_id,
-        )
         self.term1 = {
             "iri": "http://purl.obolibrary.org/obo/OBI_0000070",
             "type": ["class"],
@@ -73,7 +62,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_termset_creation_should_succeed(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.post(
             self.creation_url,
             headers=headers,
@@ -95,7 +83,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_termset_delete_should_succeed(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.delete(
             self.delete_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -107,7 +94,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_termset_delete_should_fail_for_non_owner(self):
         # owner is github user
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.delete(
             self.delete_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -118,7 +104,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_termset_delete_should_fail_for_non_exisitng(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.delete(
             self.delete_url + "some_uuid/",
             headers=headers,
@@ -133,7 +118,6 @@ class TestTermSet(TestCase, BaseTest):
         self.term_set_in_db["terms"] = [self.term3]
         self.term_set_in_db["created_at"] = "some date ago"
         self.term_set_in_db["creator"] = None
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.put(
             self.update_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -151,7 +135,6 @@ class TestTermSet(TestCase, BaseTest):
         self.term_set_in_db["terms"] = [self.term3]
         self.term_set_in_db["created_at"] = "some date ago"
         self.term_set_in_db["creator"] = None
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.put(
             self.update_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -173,7 +156,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_termset_get_internal_one_should_succeed_for_user(self):
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.get(
             self.get_url + self.term_set_in_db_internal["id"] + "/",
             headers=headers,
@@ -184,7 +166,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_termset_get_me_one_should_succeed_for_owner(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.get(
             self.get_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -196,7 +177,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_termset_get_me_one_should_fail_for_non_owner(self):
         # owner is github user
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.get(
             self.get_url + self.term_set_in_db["id"] + "/",
             headers=headers,
@@ -229,7 +209,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_termset_get_list_should_contains_public_and_internal_for_orcid_user(self):
         # orcid user did not create any term set
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.get(
             self.get_url,
             headers=headers,
@@ -243,7 +222,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_termset_get_list_should_contains_all_for_github_user(self):
         # github user has a termset.
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.get(
             self.get_url,
             headers=headers,
@@ -256,7 +234,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_add_term_to_set_should_succeed(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.put(
             self.base_url + self.term_set_in_db["id"] + "/add_term/",
             headers=headers,
@@ -269,7 +246,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_add_term_to_set_should_fail_for_non_owner(self):
         # owner is github user
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.put(
             self.base_url + self.term_set_in_db["id"] + "/add_term/",
             headers=headers,
@@ -281,7 +257,6 @@ class TestTermSet(TestCase, BaseTest):
 
     def test_remove_term_from_set_should_succeed(self):
         headers = self.github_request_headers
-        self.client.cookies["jwt"] = self.github_user_jwt
         res = self.client.delete(
             self.base_url
             + self.term_set_in_db["id"]
@@ -297,7 +272,6 @@ class TestTermSet(TestCase, BaseTest):
     def test_remove_term_from_set_should_fail_for_non_owner(self):
         # owner is github user
         headers = self.orcid_request_headers
-        self.client.cookies["jwt"] = self.orcid_user_jwt
         res = self.client.delete(
             self.base_url
             + self.term_set_in_db["id"]

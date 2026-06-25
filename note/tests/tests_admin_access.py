@@ -1,20 +1,20 @@
-from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import copy
 import json
 
 
-class TestAdminAccess(TestCase, BaseTest):
+class TestAdminAccess(BaseTest):
     @classmethod
-    def setUpTestData(self) -> None:
+    def setUpTestData(cls) -> None:
         """
         Test Scenario:
             Orcid User creates some notes and comments for one ontology.
             Github user is the admin for that ontology. So she should be able to edit/delete Orcid user notes and comments
         """
 
-        self.edit_internal_note_data = {
+        super().setUpTestData()
+        cls.edit_internal_note_data = {
             "title": "Edited internal",
             "content": "New Test Content",
             "ontology_id": "vibso",
@@ -24,7 +24,7 @@ class TestAdminAccess(TestCase, BaseTest):
             "visibility": "internal",
         }
 
-        self.edit_me_note_data = {
+        cls.edit_me_note_data = {
             "title": "Edited me",
             "content": "New Test Content",
             "ontology_id": "vibso",
@@ -34,33 +34,21 @@ class TestAdminAccess(TestCase, BaseTest):
             "visibility": "me",
         }
 
-        self.orcidUser = TestHelper.createOrcidUser()
-        self.gitHubUser = TestHelper.createGitHubUser()
-        self.internal_vis_note = TestHelper.createNote(self.orcidUser, "internal")
-        self.edit_internal_note_data["noteId"] = self.internal_vis_note.id
-        self.me_vis_note = TestHelper.createNote(self.orcidUser, "me")
-        self.edit_me_note_data["noteId"] = self.me_vis_note.id
-        self.internal_vis_note_comment = TestHelper.createCommentForNote(
-            self.orcidUser, self.internal_vis_note
+        cls.internal_vis_note = TestHelper.createNote(cls.orcidUser, "internal")
+        cls.edit_internal_note_data["noteId"] = cls.internal_vis_note.id
+        cls.me_vis_note = TestHelper.createNote(cls.orcidUser, "me")
+        cls.edit_me_note_data["noteId"] = cls.me_vis_note.id
+        cls.internal_vis_note_comment = TestHelper.createCommentForNote(
+            cls.orcidUser, cls.internal_vis_note
         )
-        self.me_vis_note_comment = TestHelper.createCommentForNote(
-            self.orcidUser, self.me_vis_note
+        cls.me_vis_note_comment = TestHelper.createCommentForNote(
+            cls.orcidUser, cls.me_vis_note
         )
-        TestHelper.createRole(self.gitHubUser, "vibso", "ontology", "admin")
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.gitHubUser.username, self.github_access_token
-        )
-        self.orcid_user_jwt = TestHelper.generate_jwt(
-            {},
-            self.orcidUser.username,
-            self.orcid_access_token,
-            self.orcid_id,
-        )
+        TestHelper.createRole(cls.gitHubUser, "vibso", "ontology", "admin")
 
     def test_note_update_admin_should_work_for_admin(self):
         headers = copy.copy(self.github_request_headers)
         note_update_url = "/note/update/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             note_update_url,
             headers=headers,
@@ -80,7 +68,6 @@ class TestAdminAccess(TestCase, BaseTest):
         }
         post_data["comment_id"] = self.internal_vis_note_comment.id
         comment_update_url = "/note/update_comment/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.put(
             comment_update_url,
             headers=headers,
@@ -101,7 +88,6 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -120,7 +106,6 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -139,7 +124,6 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,
@@ -156,7 +140,6 @@ class TestAdminAccess(TestCase, BaseTest):
             "ontology_id": self.test_ontology_id,
         }
         note_comment_delete_url = "/note/delete/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.delete(
             note_comment_delete_url,
             headers=headers,

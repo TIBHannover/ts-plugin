@@ -1,4 +1,3 @@
-from django.test import TestCase
 from user_service.libs.test_config import BaseTest
 from user_service.libs.test_helpers import TestHelper
 import random
@@ -7,9 +6,10 @@ import copy
 import json
 
 
-class TestOntologySuggestion(TestCase, BaseTest):
+class TestOntologySuggestion(BaseTest):
     @classmethod
     def setUpTestData(self) -> None:
+        super().setUpTestData()
         self.ontology_suggestion = {
             "email": "me@me",
             "username": "me",
@@ -21,15 +21,10 @@ class TestOntologySuggestion(TestCase, BaseTest):
             "collection_ids": "x,y",
             "collection_suggestion": "",
         }
-        self.gitHubUser = TestHelper.createGitHubUser()
-        self.github_user_jwt = TestHelper.generate_jwt(
-            {}, self.gitHubUser.username, self.github_access_token
-        )
 
     def test_onto_suggest_should_success(self):
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -45,7 +40,6 @@ class TestOntologySuggestion(TestCase, BaseTest):
         """repeating the last test should fail since it already exists"""
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -59,7 +53,6 @@ class TestOntologySuggestion(TestCase, BaseTest):
         headers = copy.copy(self.github_request_headers)
         url = "/ontologysuggestion/create/"
         self.ontology_suggestion["collection_suggestion"] = "true"
-        self.client.cookies["jwt"] = self.github_user_jwt
         response = self.client.post(
             url,
             headers=headers,
@@ -70,3 +63,34 @@ class TestOntologySuggestion(TestCase, BaseTest):
         self.assertEqual(
             response.json()["_result"]["response"], "ontology is suggested successfully"
         )
+    def test_adopter_request_should_success(self):
+        headers = copy.copy(self.github_request_headers)
+
+        adopter_request = {
+            "email": "me@me",
+            "username": "me",
+            "name": "test_ontology",
+            "purl": "https://purl.obolibrary.org/obo/sepio.owl",
+            "adopter_type": "project",
+            "adopter_name": "Test Adopter",
+            "adopter_alt_name": "",
+            "adopter_pid": "",
+            "adopter_homepage": "",
+            "provider_name": "",
+            "provider_pid": "",
+            "usage_description": "Testing ontology adoption",
+            "usage_channel": "API",
+        }
+
+        url = "/ontologysuggestion/adopter_create/"
+
+        self.client.cookies["jwt"] = self.github_user_jwt
+
+        response = self.client.post(
+            url,
+            headers=headers,
+            data=json.dumps(adopter_request),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
