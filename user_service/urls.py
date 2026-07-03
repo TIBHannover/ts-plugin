@@ -45,6 +45,7 @@ urlpatterns = [
     ),
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     path("pub_link/", include("pub_link.urls")),
+    path("demos/", include("demos.urls")),
 ]
 
 if settings.DEBUG:

@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "pub_link",
     "ts",
     "django_celery_beat",
+    "demos",
 ]
 
 MIDDLEWARE = [
@@ -251,3 +252,5 @@ BIOREGISTRY_ENDPOINT = env("BIOREGISTRY_ENDPOINT", default=None)
 NFDI4CHEM_SEARCH_SERVICE_ENDPOINT = env(
     "NFDI4CHEM_SEARCH_SERVICE_ENDPOINT", default=None
 )
+LLM_API_KEY = env("LLM_API_KEY", default=None)
+LLM_MODEL = env("LLM_MODEL", default=None)
