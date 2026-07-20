@@ -51,5 +51,4 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "user_service.wsgi:application"]
-
+CMD ["uvicorn", "user_service.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]

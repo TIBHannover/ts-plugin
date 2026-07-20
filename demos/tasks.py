@@ -9,7 +9,7 @@ from demos.agents import run_agent
 AGENT_MAX_LOOPS = 40
 
 
-@shared_task(bind=True)
+@shared_task
 def run_agent_task(run_id, input_text):
     group_name = f"agent_run_{run_id}"
     channel_layer = get_channel_layer()
@@ -40,8 +40,7 @@ def run_agent_task(run_id, input_text):
         "progress_feedback": "",
     }
     try:
-        redis_client.delete(f"agent:{run_id}:cancel")
-        redis_client.delete(f"agent:{run_id}:input")
+        redis_client.blpop(f"agent:{run_id}:ready", timeout=30)
 
         emit(
             {
@@ -54,7 +53,7 @@ def run_agent_task(run_id, input_text):
         )
 
         for step in range(AGENT_MAX_LOOPS):
-            if is_cancelled(run_id):
+            if is_cancelled(run_id, channel_layer, group_name):
                 return
 
             emit(
@@ -82,21 +81,6 @@ def run_agent_task(run_id, input_text):
             else:
                 break
 
-            # if step == 4:
-            #     answer = wait_for_user(channel_layer, group_name, run_id)
-            #
-            #     if answer is None:
-            #         return
-            #
-            #     emit(
-            #         {
-            #             "type": "progress",
-            #             "message": f"User answered: {answer}",
-            #         },
-            #         channel_layer,
-            #         group_name,
-            #     )
-
         emit(
             {
                 "type": "done",
@@ -122,6 +106,7 @@ def run_agent_task(run_id, input_text):
     finally:
         redis_client.delete(f"agent:{run_id}:cancel")
         redis_client.delete(f"agent:{run_id}:input")
+        redis_client.delete(f"agent:{run_id}:ready")
 
 
 def emit(payload, channel_layer, group_name):
@@ -134,7 +119,7 @@ def emit(payload, channel_layer, group_name):
     )
 
 
-def is_cancelled(run_id):
+def is_cancelled(run_id, channel_layer, group_name):
     canceled = redis_client.get(f"agent:{run_id}:cancel") == "1"
     if canceled:
         emit(
@@ -142,7 +127,8 @@ def is_cancelled(run_id):
                 "type": "cancelled",
                 "run_id": run_id,
             },
-            run_id,
+            channel_layer,
+            group_name,
         )
     return canceled
 
@@ -167,7 +153,9 @@ def wait_for_user(channel_layer, group_name, run_id, timeout_seconds=300):
             {
                 "type": "error",
                 "message": "Timed out waiting for user input.",
-            }
+            },
+            channel_layer,
+            group_name,
         )
         return None
 

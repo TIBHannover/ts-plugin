@@ -11,7 +11,6 @@ from demos.functions import (
     TOOLS,
 )
 from openai import OpenAI
-from demos.vars import PROMPT
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",

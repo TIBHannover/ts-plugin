@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
     "drf_yasg",
     "corsheaders",
     "user",
@@ -143,6 +144,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "user_service.wsgi.application"
+ASGI_APPLICATION = "user_service.asgi.application"
 
 
 DATABASES = {
@@ -190,6 +192,13 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 CELERY_BROKER_URL = "redis://redis:6379/0"
 CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+REDIS_URL = env("REDIS_URL", default="redis://redis:6379/2")
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [REDIS_URL]},
+    }
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
