@@ -80,6 +80,9 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     ".service.tib.eu",
+    ".terminology.nfdi4chem.de",
+    ".terminology.nfdi4ing.de",
+    ".terminology.tib.eu",
     ".terminilogy.nfdi4chem.de",
     ".terminilogy.nfdi4ing.de",
     ".terminilogy.tib.eu",
@@ -87,6 +90,10 @@ ALLOWED_HOSTS = [
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
+FRONTEDN_AUTH_TOKEN = env("FRONTEDN_AUTH_TOKEN", default=None)
+AUTH_COOKIE_PARTITIONED_ORIGINS = env.list(
+    "AUTH_COOKIE_PARTITIONED_ORIGINS", default=[]
+)
 
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_SAMESITE = "None"
@@ -98,11 +105,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://localhost",
     "http://127.0.0.1:3000",
-    "http://ols02.develop.service.tib.eu",
+    "https://ols02.develop.service.tib.eu",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
     "https://terminology.tib.eu",
-    "http://ols03.develop.service.tib.eu",
+    "https://ols03.develop.service.tib.eu",
     "https://service.tib.eu",
 ]
 
@@ -113,6 +120,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
     "https://terminology.tib.eu",
+    "https://ols02.develop.service.tib.eu",
+    "https://ols03.develop.service.tib.eu",
 ]
 
 CORS_ALLOW_METHODS = (*default_methods,)

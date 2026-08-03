@@ -18,21 +18,27 @@ class BaseTest(TestCase):
         cls.client_ts_id = "general"
         cls.orcidUser = TestHelper.createOrcidUser()
         cls.gitHubUser = TestHelper.createGitHubUser()
+        cls.github_csrf_token = TestHelper.generate_csrf_token()
+        cls.orcid_csrf_token = TestHelper.generate_csrf_token()
         cls.github_user_jwt = TestHelper.generate_jwt(
-            {}, cls.gitHubUser.username, cls.github_access_token
+            {},
+            cls.gitHubUser.username,
+            cls.github_access_token,
+            csrf_token=cls.github_csrf_token,
         )
         cls.orcid_user_jwt = TestHelper.generate_jwt(
             {},
             cls.orcidUser.username,
             cls.orcid_access_token,
             cls.orcid_id,
+            csrf_token=cls.orcid_csrf_token,
         )
 
         cls.github_request_headers = {
             "Content-Type": "application/json",
             "X-TS-Auth-Provider": "github",
             "X-TS-Frontend-Id": cls.client_ts_id,
-            "X-CSRF-Token": TestHelper.generate_csrf_token(),
+            "X-CSRF-Token": cls.github_csrf_token,
             "X-Auth-Token": cls.github_user_jwt,
         }
 
@@ -40,7 +46,7 @@ class BaseTest(TestCase):
             "Content-Type": "application/json",
             "X-TS-Auth-Provider": "orcid",
             "X-TS-Frontend-Id": cls.client_ts_id,
-            "X-CSRF-Token": TestHelper.generate_csrf_token(),
+            "X-CSRF-Token": cls.orcid_csrf_token,
             "X-Auth-Token": cls.orcid_user_jwt,
         }
 

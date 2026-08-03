@@ -31,6 +31,7 @@ class Auth:
         self.auth_provider = auth_provider or auth_object_dict["auth_provider"]
         self.orcid_id = orcid_id or auth_object_dict["orcid_id"]
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
+        self.client_ts_token = client_ts_token or auth_object_dict["client_ts_token"]
         if not user_id:
             userId = UserModel.get_user_id_by_username(
                 username=get_username_from_request()
