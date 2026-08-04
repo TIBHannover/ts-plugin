@@ -241,7 +241,7 @@ USE_I18N = True
 USE_TZ = True
 
 
-STATIC_URL = "/ts-plugin/static/"
+STATIC_URL = "/api/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 

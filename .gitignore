@@ -8,5 +8,6 @@ devnote
 .bash_history
 .env.back
 .python_history
+logs
 
 
