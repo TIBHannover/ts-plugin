@@ -58,6 +58,9 @@ def get_api_key_from_request():
     request = getattr(_current_context, "request", None)
     if request:
         auth_header = request.headers.get("Authorization")
+        if "Bearer " in auth_header:
+            parts = auth_header.split("Bearer ")
+            return parts[1].strip()
         if auth_header and auth_header.startswith("apk_"):
             return auth_header
     return ""
