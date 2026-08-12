@@ -32,7 +32,6 @@ def get_headers_dict():
         "auth_provider": request.headers.get("X-TS-Auth-Provider"),
         "orcid_id": get_orcid_id_jwt_payload(),
         "client_ts_id": request.headers.get("X-TS-Frontend-Id"),
-        "client_ts_token": request.headers.get("X-TS-Frontend-Token"),
         "code": request.headers.get("X-TS-Auth-APP-Code"),
     }
 

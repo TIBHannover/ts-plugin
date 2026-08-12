@@ -9,7 +9,6 @@ import datetime
 
 @override_settings(
     AUTH_COOKIE_PARTITIONED_ORIGINS=["frontend.test"],
-    FRONTEDN_AUTH_TOKEN="test-frontend-token",
 )
 class TestLogin(BaseTest):
 
@@ -22,13 +21,11 @@ class TestLogin(BaseTest):
         self.validation_url = "/user/validate_login/"
         self.test_github_username = settings.GITHUB_LOGIN_USERNAME
         self.test_orcid_username = settings.ORCID_LOGIN_USERNAME
-        self.client_ts_token = settings.FRONTEDN_AUTH_TOKEN
 
     def test_login_should_fail_without_auth_provider(self):
         headers = {
             "X-TS-Auth-APP-Code": self.github_code,
             "X-TS-Frontend-Id": self.client_ts_id,
-            "X-TS-Frontend-Token": self.client_ts_token,
         }
 
         login_response = self.client.get(self.login_url, headers=headers)
@@ -40,7 +37,6 @@ class TestLogin(BaseTest):
             "X-TS-Auth-APP-Code": self.github_code,
             "X-TS-Auth-Provider": "some_provider",
             "X-TS-Frontend-Id": self.client_ts_id,
-            "X-TS-Frontend-Token": self.client_ts_token,
         }
 
         login_response = self.client.get(self.login_url, headers=headers)
@@ -51,21 +47,6 @@ class TestLogin(BaseTest):
         headers = {
             "X-TS-Auth-APP-Code": self.github_code,
             "X-TS-Auth-Provider": "github",
-            "X-TS-Frontend-Token": self.client_ts_token,
-        }
-
-        login_response = self.client.get(self.login_url, headers=headers)
-        self.assertEqual(login_response.status_code, 401)
-        self.assertIn(
-            "Client application is not allowed to use this service.",
-            login_response.content.decode(),
-        )
-
-    def test_login_should_fail_without_client_ts_token(self):
-        headers = {
-            "X-TS-Auth-APP-Code": self.github_code,
-            "X-TS-Auth-Provider": "github",
-            "X-TS-Frontend-Id": self.client_ts_id,
         }
 
         login_response = self.client.get(self.login_url, headers=headers)
@@ -80,22 +61,6 @@ class TestLogin(BaseTest):
             "X-TS-Auth-APP-Code": self.github_code,
             "X-TS-Auth-Provider": "github",
             "X-TS-Frontend-Id": "some_other_client_id",
-            "X-TS-Frontend-Token": self.client_ts_token,
-        }
-
-        login_response = self.client.get(self.login_url, headers=headers)
-        self.assertEqual(login_response.status_code, 401)
-        self.assertIn(
-            "Client application is not allowed to use this service.",
-            login_response.content.decode(),
-        )
-
-    def test_login_should_fail_with_wrong_client_ts_token(self):
-        headers = {
-            "X-TS-Auth-APP-Code": self.github_code,
-            "X-TS-Auth-Provider": "github",
-            "X-TS-Frontend-Id": self.client_ts_id,
-            "X-TS-Frontend-Token": "some_token",
         }
 
         login_response = self.client.get(self.login_url, headers=headers)
@@ -118,7 +83,6 @@ class TestLogin(BaseTest):
             "X-TS-Auth-APP-Code": self.github_code,
             "X-TS-Auth-Provider": "github",
             "X-TS-Frontend-Id": self.client_ts_id,
-            "X-TS-Frontend-Token": self.client_ts_token,
             "Origin": "https://frontend.test",
         }
         login_response = self.client.get(self.login_url, headers=headers)
@@ -158,7 +122,6 @@ class TestLogin(BaseTest):
     #         "X-TS-Auth-APP-Code": self.orcid_code,
     #         "X-TS-Auth-Provider": "orcid",
     #         "X-TS-Frontend-Id": self.client_ts_id,
-    #         "X-TS-Frontend-Token": self.client_ts_token
     #     }
     #     login_response = self.client.get(self.login_url, headers=headers)
     #     created_user_data = login_response.json().get('_result')

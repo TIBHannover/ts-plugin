@@ -22,7 +22,6 @@ class Auth:
         auth_provider: Optional[str] = None,
         orcid_id: Optional[str] = None,
         client_ts_id: Optional[str] = None,
-        client_ts_token: Optional[str] = None,
         user_id: Union[int, str, None] = None,
     ) -> None:
         auth_object_dict = get_headers_dict()
@@ -31,7 +30,6 @@ class Auth:
         self.auth_provider = auth_provider or auth_object_dict["auth_provider"]
         self.orcid_id = orcid_id or auth_object_dict["orcid_id"]
         self.client_ts_id = client_ts_id or auth_object_dict["client_ts_id"]
-        self.client_ts_token = client_ts_token or auth_object_dict["client_ts_token"]
         if not user_id:
             userId = UserModel.get_user_id_by_username(
                 username=get_username_from_request()
@@ -102,14 +100,6 @@ class Auth:
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
         if not self.client_ts_id or self.client_ts_id not in getattr(
             settings, "CLIENT_TERMINOLOGY_SERVICES", []
-        ):
-            raise PermissionDenied(
-                "Client application is not allowed to use this service."
-            )
-
-        if (
-            not self.client_ts_token
-            or self.client_ts_token != settings.FRONTEDN_AUTH_TOKEN
         ):
             raise PermissionDenied(
                 "Client application is not allowed to use this service."

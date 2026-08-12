@@ -1,8 +1,8 @@
 from pathlib import Path
 import environ
-import logging
+
+# import logging
 import os
-import sys
 from corsheaders.defaults import default_methods
 from corsheaders.defaults import default_headers
 import warnings
@@ -90,7 +90,6 @@ ALLOWED_HOSTS = [
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
-FRONTEDN_AUTH_TOKEN = env("FRONTEDN_AUTH_TOKEN", default=None)
 AUTH_COOKIE_PARTITIONED_ORIGINS = env.list(
     "AUTH_COOKIE_PARTITIONED_ORIGINS", default=[]
 )
@@ -130,7 +129,6 @@ CORS_ALLOW_HEADERS = (
     *default_headers,
     "Authorization",
     "X-TS-Frontend-Id",
-    "X-TS-Frontend-Token",
     "X-TS-Auth-Provider",
     "X-TS-Auth-APP-Code",
     "X-TS-Orcid-Id",
