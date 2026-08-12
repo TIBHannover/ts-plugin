@@ -10,4 +10,5 @@ urlpatterns = [
         "is_system_admin/", csrf_exempt(views.is_system_admin), name="is_system_admin"
     ),
     path("metrics/", csrf_exempt(views.metrics), name="metrics"),
+    path("stats/", csrf_exempt(views.get_stats), name="stats"),
 ]
