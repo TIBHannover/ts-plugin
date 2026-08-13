@@ -57,7 +57,7 @@ def get_access_token_for_stats():
 def get_api_key_from_request():
     request = getattr(_current_context, "request", None)
     if request:
-        auth_header = request.headers.get("Authorization")
+        auth_header = request.headers.get("Authorization", "")
         if "Bearer " in auth_header:
             parts = auth_header.split("Bearer ")
             return parts[1].strip()

@@ -14,11 +14,11 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 
 env = environ.Env()
-environ.Env.read_env()
+environ.Env.read_env(BASE_DIR / "user_service" / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
 
-DEBUG = env("DEBUG_MODE", default=False)
+DEBUG = env.bool("DEBUG_MODE", default=False)
 
 warnings.filterwarnings("ignore")
 
@@ -53,19 +53,24 @@ LOGGING = {
             "formatter": "service",
             "level": "ERROR",
         },
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "service",
+            "level": "ERROR",
+        },
     },
     "root": {
-        "handlers": ["service_file"],
+        "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
         "level": "ERROR",
     },
     "loggers": {
         "django": {
-            "handlers": ["service_file"],
+            "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
             "level": "ERROR",
             "propagate": False,
         },
         "service.print": {
-            "handlers": ["service_file"],
+            "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
             "level": "ERROR",
             "propagate": False,
         },
