@@ -92,7 +92,8 @@ ALLOWED_HOSTS = [
     ".terminilogy.nfdi4ing.de",
     ".terminilogy.tib.eu",
 ]
-FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
+# FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
+FORCE_SCRIPT_NAME = "/api"
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 AUTH_COOKIE_PARTITIONED_ORIGINS = env.list(
@@ -244,7 +245,7 @@ USE_I18N = True
 USE_TZ = True
 
 
-STATIC_URL = "/static/"
+STATIC_URL = "/api/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
