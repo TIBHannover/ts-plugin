@@ -92,8 +92,7 @@ ALLOWED_HOSTS = [
     ".terminilogy.nfdi4ing.de",
     ".terminilogy.tib.eu",
 ]
-# FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
-FORCE_SCRIPT_NAME = "/api"
+FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
 AUTH_COOKIE_PARTITIONED_ORIGINS = env.list(
