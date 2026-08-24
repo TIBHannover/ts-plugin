@@ -9,5 +9,6 @@ devnote
 .env.back
 .python_history
 logs
+reports/
 
 
