@@ -1,3 +1,37 @@
+CATEGORIES = [
+    (
+        "Material Object",
+        ["physical object", "device", "artifact", "substance", "physical thing"],
+    ),
+    ("Process", ["activity", "event", "action", "occurrence", "procedure"]),
+    ("Agent", ["person", "organization", "software agent", "actor"]),
+    (
+        "Attribute",
+        ["property", "characteristic", "quality", "feature", "parameter", "trait"],
+    ),
+    (
+        "Disposition",
+        ["function", "capability", "tendency", "potential", "capacity", "role"],
+    ),
+    ("Location", ["place", "site", "region", "position", "spatial area"]),
+    (
+        "Time Interval",
+        ["period", "duration", "moment", "date", "schedule", "start", "end"],
+    ),
+    (
+        "Information Content",
+        [
+            "data",
+            "data set",
+            "document",
+            "report",
+            "message",
+            "description",
+            "specification",
+        ],
+    ),
+]
+
 PROMPT = """
 
 Persona and Goal:
@@ -27,7 +61,8 @@ General rules:
     - use get_term_detail function to check the parent term is real to avoid making up a parent term that does not exist.
 
 Output:
-    - a json like {'parent_label': '', 'ontology': '', 'parent_iri': ''}. Just json. Not text. process will fail if you do not provide json.
+    - If you need information or want feedback from the user, return only JSON in this form: {"question": "your concise question"}. Do not call tools until the user replies.
+    - Otherwise, return only a JSON object like {'parent_label': '', 'ontology': '', 'parent_iri': ''}. Do not include text.
 
 - functions you can call are: 
     - Search(query, ontologyId): look for a term based on keyword. You can narrow it down to one ontology by providing an ontology id. It returns a list of dictionaries each have: label, iri, definition, ontologyId, parent_iri, synonym

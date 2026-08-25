@@ -4,5 +4,5 @@ from .consumers import AgentConsumer
 
 
 websocket_urlpatterns = [
-    path("ws/demos/agent/<uuid:run_id>/", AgentConsumer.as_asgi()),
+    path("ws/ai_assist/agent/<uuid:run_id>/", AgentConsumer.as_asgi()),
 ]

@@ -1,0 +1,86 @@
+import json
+import secrets
+import uuid
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from user_service.libs.decorators import authentication_required
+from user_service.middlewares.request import get_username_from_request
+
+from .agents import build_user_prompt
+from .redis_client import redis_client
+from .tasks import run_agent_task
+from .vars import CATEGORIES
+
+CATEGORY_SYNONYMS = dict(CATEGORIES)
+
+
+@require_POST
+@authentication_required
+def start_agent(request):
+    """Start one bounded assistant run and return its WebSocket address."""
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Request body must be valid JSON."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
+
+    label = payload.get("label")
+    description = payload.get("description")
+    category = payload.get("category")
+    if not all(isinstance(value, str) and value.strip() for value in (label, description, category)):
+        return JsonResponse(
+            {"error": "'label', 'description', and 'category' must be non-empty strings."},
+            status=400,
+        )
+    if len(label) > 4000 or len(description) > 4000:
+        return JsonResponse({"error": "'label' and 'description' must be at most 4000 characters."}, status=400)
+    if category not in CATEGORY_SYNONYMS:
+        return JsonResponse({"error": "'category' is not supported."}, status=400)
+
+    category_text = f"{category}:{','.join(CATEGORY_SYNONYMS[category])}"
+    input_text = build_user_prompt(label, description, category_text)
+
+    run_id = str(uuid.uuid4())
+    owner = get_username_from_request()
+    owner_slot = f"ai_assist:owner:{owner}:run"
+    if not redis_client.set(owner_slot, run_id, nx=True, ex=3600):
+        return JsonResponse({"error": "An assistant run is already active."}, status=429)
+
+    websocket_token = secrets.token_urlsafe(32)
+    try:
+        redis_client.delete(
+            f"agent:{run_id}:cancel",
+            f"agent:{run_id}:input",
+            f"agent:{run_id}:ready",
+        )
+        redis_client.setex(f"agent:{run_id}:owner", 3600, owner)
+        redis_client.setex(f"agent:{run_id}:socket_token", 3600, websocket_token)
+        task = run_agent_task.delay(run_id=run_id, input_text=input_text)
+    except Exception:
+        rollback_run_start(run_id, owner_slot)
+        return JsonResponse({"error": "Unable to start the assistant."}, status=503)
+
+    return JsonResponse(
+        {
+            "run_id": run_id,
+            "task_id": task.id,
+            "websocket_path": f"/ws/ai_assist/agent/{run_id}/",
+            "websocket_token": websocket_token,
+        },
+        status=202,
+    )
+
+
+def rollback_run_start(run_id, owner_slot):
+    """Release a partially-created run without removing a newer owner slot."""
+    if redis_client.get(owner_slot) == run_id:
+        redis_client.delete(owner_slot)
+    redis_client.delete(
+        f"agent:{run_id}:cancel",
+        f"agent:{run_id}:input",
+        f"agent:{run_id}:ready",
+        f"agent:{run_id}:owner",
+        f"agent:{run_id}:socket_token",
+    )

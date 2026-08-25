@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any
 
-from demos.functions import (
+from ai_assist.functions import (
     search,
     search_under_term,
     get_term_detail,
@@ -42,6 +42,7 @@ def call_openrouter(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run one non-streaming LLM turn and normalize the SDK objects for storage."""
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -107,6 +108,7 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
 
 
 def run_agent(messages, response):
+    """Advance the LLM by one turn, including any requested terminology tools."""
     available_tools = [
         tool
         for tool in TOOLS
@@ -121,6 +123,19 @@ def run_agent(messages, response):
     tool_calls = message.get("tool_calls") or []
     if not tool_calls:
         content = message.get("content", "")
+        try:
+            assistant_response = json.loads(content)
+        except (TypeError, json.JSONDecodeError):
+            assistant_response = {}
+
+        # A question pauses the worker so the next WebSocket user_message becomes
+        # part of this same LLM conversation instead of starting another run.
+        question = assistant_response.get("question")
+        if isinstance(question, str) and question.strip():
+            response["question"] = question
+            response["needs_user_input"] = True
+            return
+
         is_valid, final_response, feedback = validate_final_response(content)
         if is_valid:
             temp = json.loads(final_response)

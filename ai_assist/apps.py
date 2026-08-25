@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class DemosConfig(AppConfig):
+class AiAssistConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'demos'
+    name = 'ai_assist'

@@ -170,7 +170,7 @@ INSTALLED_APPS = [
     "pub_link",
     "ts",
     "django_celery_beat",
-    "demos",
+    "ai_assist",
 ]
 
 MIDDLEWARE = [
