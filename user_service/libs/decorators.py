@@ -1,5 +1,6 @@
 from django.shortcuts import HttpResponse
 from django.core.exceptions import PermissionDenied, BadRequest
+from django.conf import settings
 from django.http import Http404, JsonResponse
 from user_service.middlewares.request import (
     get_headers_dict,
@@ -45,8 +46,8 @@ def error_handler_decorator(func):
             result = func(*args, **kwargs)
             return result
         except KeyError as e:
-            # if current_app.config.get('DEBUG_MODDE'):
-            # raise
+            if settings.DEBUG:
+                raise
             print("Mandatory Fields are missing : " + str(e), flush=True)
             response = HttpResponse(
                 "Mandatory Fields are missing : " + str(e),
@@ -56,19 +57,26 @@ def error_handler_decorator(func):
             return response
 
         except PermissionDenied as e:
+            if settings.DEBUG:
+                raise
             print(e)
             response = HttpResponse(str(e), status=401)
             return response
 
         except BadRequest as e:
+            if settings.DEBUG:
+                raise
             response = HttpResponse(str(e), status=400)
             return response
 
         except Http404 as e:
+            if settings.DEBUG:
+                raise
             return JsonResponse({"_result": str(e)}, status=404)
 
         except Exception as e:
-            print(e, flush=True)
+            if settings.DEBUG:
+                raise
             response = HttpResponse(
                 str(e),
                 status=500,

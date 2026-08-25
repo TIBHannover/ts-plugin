@@ -7,7 +7,11 @@ from user_service.libs.decorators import (
 from .models import TermSetModel, TermsModel
 from user.models import UserModel
 import json
-from user_service.middlewares.request import get_username_from_request, get_headers_dict
+from user_service.middlewares.request import (
+    get_client_id_from_request,
+    get_username_from_request,
+    get_headers_dict,
+)
 from datetime import datetime as _time
 from django.core.exceptions import BadRequest
 from django.http import Http404, HttpResponseServerError
@@ -117,6 +121,7 @@ def get(request, id=None):
     user_id = user.id if user else None
     auth_object_dict["user_id"] = user_id
     auth = Auth(**auth_object_dict)
+    client_id = get_client_id_from_request()
     if auth.user_is_guest():
         user_id = None
 
@@ -125,11 +130,14 @@ def get(request, id=None):
         term_sets = []
         if not user_id:
             # guest user. show only public term sets
-            term_sets = TermSetModel.objects.filter(visibility="public").all()
+            term_sets = TermSetModel.objects.filter(
+                visibility="public",
+                creator__client_ts=client_id,
+            ).all()
         else:
             term_sets = TermSetModel.objects.filter(
-                Q(visibility="internal")
-                | Q(visibility="public")
+                (Q(visibility="internal") & Q(creator__client_ts=client_id))
+                | (Q(visibility="public") & Q(creator__client_ts=client_id))
                 | (Q(visibility="me") & Q(creator=user))
             )
 

@@ -26,3 +26,22 @@ class TermDatasetLinkModel(models.Model):
 
     def __str__(self):
         return f"<TermDatasetLinkModel {self.curie}>"
+
+
+class HarvestFailureModel(models.Model):
+    created_at = models.DateTimeField()
+    dataset_title = models.CharField()
+    error_code = models.IntegerField()
+
+    class Meta:
+        db_table = "harvest_failures"
+
+    def to_dict(self):
+        return {
+            "created_at": self.created_at,
+            "dataset_title": self.dataset_title,
+            "error_code": self.error_code,
+        }
+
+    def __str__(self):
+        return f"<HarvestFailureModel {self.dataset_title}>"

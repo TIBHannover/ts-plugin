@@ -1,25 +1,93 @@
 from pathlib import Path
 import environ
+
+# import logging
 import os
 from corsheaders.defaults import default_methods
 from corsheaders.defaults import default_headers
+import warnings
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+LOG_DIR = BASE_DIR / "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
 
 
 env = environ.Env()
-environ.Env.read_env()
+environ.Env.read_env(BASE_DIR / "user_service" / ".env")
 
 SECRET_KEY = env("SECRET_KEY")
 
-DEBUG = env("DEBUG_MODE", default=False)
+DEBUG = env.bool("DEBUG_MODE", default=False)
+
+warnings.filterwarnings("ignore")
+
+
+class LoggerWriter:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+
+    def write(self, message):
+        message = message.rstrip()
+        if message:
+            self.logger.log(self.level, message)
+
+    def flush(self):
+        pass
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "service": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "service_file": {
+            "class": "logging.FileHandler",
+            "filename": LOG_DIR / "service.log",
+            "formatter": "service",
+            "level": "ERROR",
+        },
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "service",
+            "level": "ERROR",
+        },
+    },
+    "root": {
+        "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
+        "level": "ERROR",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "service.print": {
+            "handlers": ["service_file", "console"] if DEBUG else ["service_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
+# sys.stdout = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
+# sys.stderr = LoggerWriter(logging.getLogger("service.print"), logging.ERROR)
 
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     ".service.tib.eu",
+    ".terminology.nfdi4chem.de",
+    ".terminology.nfdi4ing.de",
+    ".terminology.tib.eu",
     ".terminilogy.nfdi4chem.de",
     ".terminilogy.nfdi4ing.de",
     ".terminilogy.tib.eu",
@@ -27,6 +95,9 @@ ALLOWED_HOSTS = [
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
 CLIENT_TERMINOLOGY_SERVICES = ["general", "nfdi4chem", "nfdi4ing"]
+AUTH_COOKIE_PARTITIONED_ORIGINS = env.list(
+    "AUTH_COOKIE_PARTITIONED_ORIGINS", default=[]
+)
 
 CORS_ALLOW_CREDENTIALS = True
 SESSION_COOKIE_SAMESITE = "None"
@@ -39,11 +110,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://localhost",
     "http://127.0.0.1:3000",
-    "http://ols02.develop.service.tib.eu",
+    "https://ols02.develop.service.tib.eu",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
     "https://terminology.tib.eu",
-    "http://ols03.develop.service.tib.eu",
+    "https://ols03.develop.service.tib.eu",
     "https://service.tib.eu",
 ]
 
@@ -54,6 +125,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
     "https://terminology.tib.eu",
+    "https://ols02.develop.service.tib.eu",
+    "https://ols03.develop.service.tib.eu",
 ]
 
 CORS_ALLOW_METHODS = (*default_methods,)
@@ -62,7 +135,6 @@ CORS_ALLOW_HEADERS = (
     *default_headers,
     "Authorization",
     "X-TS-Frontend-Id",
-    "X-TS-Frontend-Token",
     "X-TS-Auth-Provider",
     "X-TS-Auth-APP-Code",
     "X-TS-Orcid-Id",
@@ -186,12 +258,10 @@ USE_I18N = True
 USE_TZ = True
 
 
-STATIC_URL = "/ts-plugin/static/"
+STATIC_URL = env("SUB_PATH", default="") + "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
-CELERY_BROKER_URL = "redis://redis:6379/0"
-CELERY_RESULT_BACKEND = "redis://redis:6379/0"
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/2")
 CHANNEL_LAYERS = {
     "default": {
@@ -199,9 +269,13 @@ CHANNEL_LAYERS = {
         "CONFIG": {"hosts": [REDIS_URL]},
     }
 }
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LOG_DIR = Path("./logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 SUB_PATH = env("SUB_PATH", default="")
 GITHUB_TS_USER_API_TOKEN = env("GITHUB_TS_USER_API_TOKEN", default=None)

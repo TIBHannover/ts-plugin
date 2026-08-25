@@ -22,16 +22,20 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
         contentType = (
             "application/rdf+xml" if ".ttl" not in ontology_purl else "text/turtle"
         )
+        ontologyContent = requests.get(ontology_purl)
+        ontologyContent.raise_for_status()
+        shapeTesterContent = requests.get(settings.ONTOLOGY_SHAPE_TEST_URL)
+        shapeTesterContent.raise_for_status()
         data = {
-            "contentToValidate": ontology_purl,
+            "contentToValidate": ontologyContent.text,
             "contentSyntax": contentType,
-            "embeddingMethod": "URL",
+            "embeddingMethod": "STRING",
             "validationType": "extended",
             "reportSyntax": "application/ld+json",
             "externalRules": [
                 {
-                    "ruleSet": settings.ONTOLOGY_SHAPE_TEST_URL,
-                    "embeddingMethod": "URL",
+                    "ruleSet": shapeTesterContent.text,
+                    "embeddingMethod": "STRING",
                     "ruleSyntax": "text/turtle",
                 }
             ],
@@ -47,13 +51,21 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
                 res_content = response.json()
             except json.decoder.JSONDecodeError:
                 res_content = {"message": "unknown error"}
-            return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[], shape_test_failed=True)
+            return ValidationResult(
+                error=[ShapeErrorObject(text=res_content["message"], about="")],
+                info=[],
+                shape_test_failed=True,
+            )
 
         response_data = response.json()
         response_data = response_data.get("@graph", None)
         if response_data is None:
             res_content = {"message": "unknown error"}
-            return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[], shape_test_failed=True)
+            return ValidationResult(
+                error=[ShapeErrorObject(text=res_content["message"], about="")],
+                info=[],
+                shape_test_failed=True,
+            )
 
         result = {"error": [], "info": [], "shape_test_failed": False}
         for report_item in response_data:
@@ -73,8 +85,11 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
     except:
         # raise
         res_content = {"message": "unknown error"}
-        return ValidationResult(error=[ShapeErrorObject(text=res_content["message"], about="")], info=[],
-                            shape_test_failed=True)
+        return ValidationResult(
+            error=[ShapeErrorObject(text=res_content["message"], about="")],
+            info=[],
+            shape_test_failed=True,
+        )
 
 
 def getErrorTargetFromMessage(errorMesaage: str) -> str:

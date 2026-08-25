@@ -19,12 +19,28 @@ from django.views import View
 import json
 from jose import jwt
 import datetime
+from http.cookies import Morsel
+from urllib.parse import urlparse
 from django.conf import settings
 import secrets
 from django.http import JsonResponse
 from user_service.libs.utils import make_hash
 import requests
 from django.core.cache import cache
+
+
+def set_partitioned_cookie(response, key):
+    Morsel._reserved.setdefault("partitioned", "Partitioned")
+    Morsel._flags.add("partitioned")
+    response.cookies[key]["partitioned"] = True
+
+
+def origin_requires_partitioned_cookie(request):
+    origin = request.headers.get("Origin", "")
+    if not origin:
+        return False
+    origin_host = urlparse(origin).netloc
+    return origin_host in getattr(settings, "AUTH_COOKIE_PARTITIONED_ORIGINS", [])
 
 
 @require_http_methods(["GET"])
@@ -45,9 +61,8 @@ def close_endpoint(request):
 def login(request):
     _time = datetime.datetime
     auth_object_dict = get_headers_dict()
-    if auth_object_dict["client_ts_id"] not in settings.CLIENT_TERMINOLOGY_SERVICES:
-        return create_json_response({"issue": "unkown client id"})
     auth = Auth(**auth_object_dict)
+    auth.abort_if_client_app_not_valid()
     auth.abort_if_not_auth_provider()
     auth_response_dict = auth.authenticate()
     if auth_response_dict:
@@ -73,22 +88,29 @@ def login(request):
         auth_response_dict["system_admin"] = role_model.target_object_type == "system"
         auth_response_dict["settings"] = user.user_extra
         auth_response_dict["id"] = user.id
-        expires = _time.now(datetime.UTC) + datetime.timedelta(24 * 60 * 7)  # a week
+        expires = _time.now(datetime.UTC) + datetime.timedelta(days=7)
+        csrf_token = secrets.token_urlsafe(32)
+        auth_response_dict["csrf"] = csrf_token
         auth_response_dict["exp"] = expires
         jwt_token = jwt.encode(
             auth_response_dict, settings.SECRET_KEY, algorithm="HS256"
         )
 
-        csrf_token = jwt.encode(
-            {"csrf": secrets.token_urlsafe(32)},
-            settings.SECRET_KEY,
-            algorithm="HS256",
-        )
         auth_response_dict["csrf_token"] = csrf_token
         # remove the token from the payload since jwt already has it
         auth_response_dict.pop("token", None)
-        auth_response_dict["jwt"] = jwt_token
+        auth_response_dict.pop("csrf", None)
         response = JsonResponse({"_result": auth_response_dict})
+        response.set_cookie(
+            "jwt",
+            jwt_token,
+            httponly=True,
+            secure=settings.SESSION_COOKIE_SECURE,
+            samesite=settings.SESSION_COOKIE_SAMESITE,
+            expires=expires,
+        )
+        if origin_requires_partitioned_cookie(request):
+            set_partitioned_cookie(response, "jwt")
         return response
     return create_json_response({"issue": "auth is rejected"})
 
@@ -209,7 +231,16 @@ def submit_term_request(form_data, token):
 @require_http_methods(["GET"])
 def logout(request):
     response = JsonResponse({"_result": "logged out"})
-    response.delete_cookie("jwt")
+    response.set_cookie(
+        "jwt",
+        "",
+        max_age=0,
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+    )
+    if origin_requires_partitioned_cookie(request):
+        set_partitioned_cookie(response, "jwt")
     return response
 
 

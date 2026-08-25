@@ -1,4 +1,5 @@
 import threading
+import secrets
 from jose import jwt
 from django.conf import settings
 from user.models import UserModel
@@ -46,14 +47,20 @@ def get_access_token_for_stats():
     # Authorization token is not jwt format in this particular case. is directly the access token
     request = getattr(_current_context, "request", None)
     if request:
-        return request.headers.get("Authorization")
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            parts = auth_header.split("Bearer ")
+            return parts[1].strip()
     return "default"
 
 
 def get_api_key_from_request():
     request = getattr(_current_context, "request", None)
     if request:
-        auth_header = request.headers.get("Authorization")
+        auth_header = request.headers.get("Authorization", "")
+        if "Bearer " in auth_header:
+            parts = auth_header.split("Bearer ")
+            return parts[1].strip()
         if auth_header and auth_header.startswith("apk_"):
             return auth_header
     return ""
@@ -61,8 +68,9 @@ def get_api_key_from_request():
 
 def get_jwt_token_from_request():
     request = getattr(_current_context, "request", None)
-    token = request.headers.get("X-Auth-Token")
-    return token
+    if not request:
+        return ""
+    return request.headers.get("X-Auth-Token") or request.COOKIES.get("jwt", "")
 
 
 def get_orcid_id_jwt_payload():
@@ -94,12 +102,20 @@ def get_username_from_request():
 
 def is_csrf_valid():
     request = getattr(_current_context, "request", None)
+    if not request:
+        return False
     csrf_token = request.headers.get("X-CSRF-Token")
     if not csrf_token:
         return False
+    token = get_jwt_token_from_request()
     try:
-        payload = jwt.decode(csrf_token, settings.SECRET_KEY, algorithms=["HS256"])
-        csrf_token = payload.get("csrf")
-        return True if csrf_token else False
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        expected_csrf_token = payload.get("csrf", "")
+        if not expected_csrf_token and request.headers.get("X-Auth-Token"):
+            legacy_payload = jwt.decode(
+                csrf_token, settings.SECRET_KEY, algorithms=["HS256"]
+            )
+            return bool(legacy_payload.get("csrf", ""))
+        return secrets.compare_digest(csrf_token, expected_csrf_token)
     except:
         return False
