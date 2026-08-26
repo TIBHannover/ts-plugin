@@ -77,7 +77,7 @@ start_redis
 
 "$PYTHON" manage.py migrate
 
-"$PYTHON" manage.py runserver "0.0.0.0:${PORT}" &
+"$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" &
 pids+=("$!")
 
 "$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &

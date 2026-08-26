@@ -148,12 +148,7 @@ def add_pending_user_input(messages, run_id):
 
 
 def cleanup_run(run_id):
-    """Remove conversation data and release this owner's single active-run slot."""
-    owner = redis_client.get(f"agent:{run_id}:owner")
-    if owner:
-        owner_slot = f"ai_assist:owner:{owner}:run"
-        if redis_client.get(owner_slot) == run_id:
-            redis_client.delete(owner_slot)
+    """Remove the Redis data associated with a completed or failed run."""
     redis_client.delete(
         f"agent:{run_id}:cancel",
         f"agent:{run_id}:input",
@@ -161,7 +156,6 @@ def cleanup_run(run_id):
         f"agent:{run_id}:state",
         f"agent:{run_id}:awaiting_input",
         f"agent:{run_id}:resuming",
-        f"agent:{run_id}:owner",
         f"agent:{run_id}:socket_token",
     )
 

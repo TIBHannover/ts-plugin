@@ -5,7 +5,6 @@ import uuid
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from user_service.libs.decorators import authentication_required
-from user_service.middlewares.request import get_username_from_request
 
 from .agents import build_user_prompt
 from .redis_client import redis_client
@@ -43,11 +42,6 @@ def start_agent(request):
     input_text = build_user_prompt(label, description, category_text)
 
     run_id = str(uuid.uuid4())
-    owner = get_username_from_request()
-    owner_slot = f"ai_assist:owner:{owner}:run"
-    if not redis_client.set(owner_slot, run_id, nx=True, ex=3600):
-        return JsonResponse({"error": "An assistant run is already active."}, status=429)
-
     websocket_token = secrets.token_urlsafe(32)
     try:
         redis_client.delete(
@@ -55,11 +49,10 @@ def start_agent(request):
             f"agent:{run_id}:input",
             f"agent:{run_id}:ready",
         )
-        redis_client.setex(f"agent:{run_id}:owner", 3600, owner)
         redis_client.setex(f"agent:{run_id}:socket_token", 3600, websocket_token)
         task = run_agent_task.delay(run_id=run_id, input_text=input_text)
     except Exception:
-        rollback_run_start(run_id, owner_slot)
+        rollback_run_start(run_id)
         return JsonResponse({"error": "Unable to start the assistant."}, status=503)
 
     return JsonResponse(
@@ -73,14 +66,11 @@ def start_agent(request):
     )
 
 
-def rollback_run_start(run_id, owner_slot):
-    """Release a partially-created run without removing a newer owner slot."""
-    if redis_client.get(owner_slot) == run_id:
-        redis_client.delete(owner_slot)
+def rollback_run_start(run_id):
+    """Release a partially-created run when task enqueueing fails."""
     redis_client.delete(
         f"agent:{run_id}:cancel",
         f"agent:{run_id}:input",
         f"agent:{run_id}:ready",
-        f"agent:{run_id}:owner",
         f"agent:{run_id}:socket_token",
     )
