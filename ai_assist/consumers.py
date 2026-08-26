@@ -5,6 +5,7 @@ from urllib.parse import parse_qs
 from asgiref.sync import sync_to_async
 from celery import current_app
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
 
 from .redis_client import redis_client
 
@@ -53,37 +54,78 @@ class AgentConsumer(AsyncWebsocketConsumer):
         if data.get("type") == "cancel":
             await sync_to_async(redis_client.setex)(f"agent:{self.run_id}:cancel", 3600, "1")
 
-        elif data.get("type") == "user_message" and isinstance(data.get("message"), str):
-            message = data["message"]
-            if len(message) > 4000:
-                await self.send_json({"type": "error", "message": "Message is too long."})
-                return
-            await sync_to_async(redis_client.rpush)(
-                f"agent:{self.run_id}:input",
-                message,
-            )
-            await sync_to_async(redis_client.expire)(f"agent:{self.run_id}:input", 3600)
+        elif data.get("type") == "reject":
             waiting = await sync_to_async(redis_client.get)(
-                f"agent:{self.run_id}:awaiting_input"
+                f"agent:{self.run_id}:awaiting_rejection"
             )
             if not waiting:
                 return
             resuming = await sync_to_async(redis_client.set)(
                 f"agent:{self.run_id}:resuming", "1", nx=True, ex=60
             )
-            if resuming:
-                try:
-                    await sync_to_async(current_app.send_task)(
-                        "ai_assist.tasks.resume_agent_task", args=[self.run_id]
-                    )
-                except Exception:
-                    await sync_to_async(redis_client.delete)(f"agent:{self.run_id}:resuming")
-                    await self.send_json({"type": "error", "message": "Unable to resume assistant."})
-                    return
+            if not resuming:
+                return
+            rejection_count = await sync_to_async(redis_client.incr)(
+                f"agent:{self.run_id}:rejections"
+            )
+            await sync_to_async(redis_client.expire)(f"agent:{self.run_id}:rejections", 3600)
+            if rejection_count <= settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS:
                 await sync_to_async(redis_client.delete)(
-                    f"agent:{self.run_id}:awaiting_input",
+                    f"agent:{self.run_id}:awaiting_rejection",
                     f"agent:{self.run_id}:resuming",
                 )
+                await sync_to_async(redis_client.setex)(
+                    f"agent:{self.run_id}:awaiting_rejection_reason", 3600, "1"
+                )
+                await self.channel_layer.group_send(
+                    self.group_name,
+                    {
+                        "type": "agent.event",
+                        "payload": {
+                            "type": "question",
+                            "message": "Why do you reject this recommendation?",
+                        },
+                    },
+                )
+                return
+            await self.resume_task("awaiting_rejection")
+
+        elif data.get("type") == "user_message" and isinstance(data.get("message", ""), str):
+            message = data.get("message", "")
+            if len(message) > 4000:
+                await self.send_json({"type": "error", "message": "Message is too long."})
+                return
+            awaiting_key = "awaiting_input"
+            waiting = await sync_to_async(redis_client.get)(f"agent:{self.run_id}:{awaiting_key}")
+            if not waiting:
+                awaiting_key = "awaiting_rejection_reason"
+                waiting = await sync_to_async(redis_client.get)(f"agent:{self.run_id}:{awaiting_key}")
+            if not waiting:
+                return
+            resuming = await sync_to_async(redis_client.set)(
+                f"agent:{self.run_id}:resuming", "1", nx=True, ex=60
+            )
+            if not resuming:
+                return
+            if awaiting_key == "awaiting_rejection_reason":
+                message = f"The user rejected this recommendation because: {message}. Find a different suitable parent term."
+            await sync_to_async(redis_client.rpush)(f"agent:{self.run_id}:input", message)
+            await sync_to_async(redis_client.expire)(f"agent:{self.run_id}:input", 3600)
+            await self.resume_task(awaiting_key)
+
+    async def resume_task(self, awaiting_key):
+        try:
+            await sync_to_async(current_app.send_task)(
+                "ai_assist.tasks.resume_agent_task", args=[self.run_id]
+            )
+        except Exception:
+            await sync_to_async(redis_client.delete)(f"agent:{self.run_id}:resuming")
+            await self.send_json({"type": "error", "message": "Unable to resume assistant."})
+            return
+        await sync_to_async(redis_client.delete)(
+            f"agent:{self.run_id}:{awaiting_key}",
+            f"agent:{self.run_id}:resuming",
+        )
 
     async def agent_event(self, event):
         await self.send_json(event["payload"])

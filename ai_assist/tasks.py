@@ -3,13 +3,15 @@ import json
 from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
+from django.conf import settings
 
 from ai_assist.agents import run_agent
 from ai_assist.vars import PROMPT
 
 from .redis_client import redis_client
 
-AGENT_MAX_LOOPS = 40
+AGENT_MAX_LOOPS = settings.TERM_REQUEST_AI_ASSIST_MAX_LOOPS
+AGENT_MAX_REJECTIONS = settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS
 RUN_TTL_SECONDS = 3600
 
 
@@ -41,9 +43,19 @@ def resume_agent_task(run_id):
         state_json = redis_client.get(f"agent:{run_id}:state")
         if not state_json:
             return
+        rejection_count = int(redis_client.get(f"agent:{run_id}:rejections") or 0)
+        if rejection_count > AGENT_MAX_REJECTIONS:
+            emit_no_parent_found(run_id)
+            cleanup_run(run_id)
+            return
         state = json.loads(state_json)
+        if rejection_count > state.get("retry_started", 0):
+            state["steps"] = 0
+            state["retry_started"] = rejection_count
+            state["response"]["search_call_count"] = 0
         state["response"]["needs_user_input"] = False
         state["response"]["question"] = ""
+        state["response"]["is_final"] = False
         run_conversation(run_id, state)
     except Exception:
         fail_run(run_id)
@@ -75,15 +87,6 @@ def run_conversation(run_id, state):
                 return
 
             add_pending_user_input(messages, run_id)
-            emit(
-                {
-                    "type": "progress",
-                    "step": step + 1,
-                    "total": AGENT_MAX_LOOPS,
-                    "message": f"Running step {step + 1}",
-                },
-                run_id,
-            )
             run_agent(messages, response)
             state["steps"] = step + 1
 
@@ -93,14 +96,15 @@ def run_conversation(run_id, state):
                 return
 
             if response["is_final"]:
+                save_state(run_id, state, "awaiting_rejection")
                 emit_done(response, run_id)
-                cleanup_run(run_id)
                 return
 
-            emit({"type": "progress", "message": response["progress_feedback"]}, run_id)
+            if response["progress_feedback"]:
+                emit({"type": "progress", "message": response["progress_feedback"]}, run_id)
 
         emit(
-            {"type": "error", "message": "Agent reached the 40-step limit without a final response."},
+            {"type": "error", "message": f"Agent reached the {AGENT_MAX_LOOPS}-step limit without a final response."},
             run_id,
         )
         cleanup_run(run_id)
@@ -108,10 +112,10 @@ def run_conversation(run_id, state):
         fail_run(run_id)
 
 
-def save_state(run_id, state):
-    """Store the LLM transcript until a reply schedules a short resume task."""
+def save_state(run_id, state, awaiting_key="awaiting_input"):
+    """Store the LLM transcript until the client sends the expected response."""
     redis_client.setex(f"agent:{run_id}:state", RUN_TTL_SECONDS, json.dumps(state))
-    redis_client.setex(f"agent:{run_id}:awaiting_input", RUN_TTL_SECONDS, "1")
+    redis_client.setex(f"agent:{run_id}:{awaiting_key}", RUN_TTL_SECONDS, "1")
 
 
 def emit_done(response, run_id):
@@ -122,6 +126,19 @@ def emit_done(response, run_id):
             "ontology": response.get("ontology", "N/A"),
             "parent_iri": response.get("parent_iri", "N/A"),
             "error": response.get("error", ""),
+        },
+        run_id,
+    )
+
+
+def emit_no_parent_found(run_id):
+    emit(
+        {
+            "type": "done",
+            "parent_label": "",
+            "ontology": "",
+            "parent_iri": "",
+            "error": f"Unable to find a suitable parent term after {AGENT_MAX_REJECTIONS + 1} rejected recommendations.",
         },
         run_id,
     )
@@ -155,6 +172,9 @@ def cleanup_run(run_id):
         f"agent:{run_id}:ready",
         f"agent:{run_id}:state",
         f"agent:{run_id}:awaiting_input",
+        f"agent:{run_id}:awaiting_rejection",
+        f"agent:{run_id}:awaiting_rejection_reason",
+        f"agent:{run_id}:rejections",
         f"agent:{run_id}:resuming",
         f"agent:{run_id}:socket_token",
     )

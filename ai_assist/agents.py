@@ -27,6 +27,14 @@ FUNCTIONS = {
     "search_under_term": search_under_term,
 }
 
+FUNCTION_LABELS = {
+    "search": "Searching terminology",
+    "search_under_term": "Searching related terms",
+    "get_term_detail": "Checking term details",
+    "get_term_children": "Checking child terms",
+    "get_ontology_detail": "Checking ontology details",
+}
+
 
 def _as_dict(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -51,6 +59,16 @@ def call_openrouter(
     )
     usage = _as_dict(response.usage) if response.usage else {}
     return _as_dict(response.choices[0].message), usage
+
+
+def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
+    if fn_name == "search":
+        ontology = args.get("ontologyId")
+        suffix = f" in {ontology}" if ontology else ""
+        return f'{FUNCTION_LABELS[fn_name]} for "{args.get("query", "")}"{suffix}'
+    if fn_name == "get_ontology_detail":
+        return f'{FUNCTION_LABELS[fn_name]} for "{args.get("ontologyId", "")}"'
+    return f'{FUNCTION_LABELS[fn_name]} for "{args.get("iri", "")}"'
 
 
 def build_user_prompt(
@@ -109,6 +127,7 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
 
 def run_agent(messages, response):
     """Advance the LLM by one turn, including any requested terminology tools."""
+    response["progress_feedback"] = ""
     available_tools = [
         tool
         for tool in TOOLS
@@ -158,9 +177,14 @@ def run_agent(messages, response):
         fn_name = tool_call["function"]["name"]
         args = tool_call["function"].get("arguments", {})
         if isinstance(args, str):
-            args = json.loads(args) if args else {}
+            try:
+                args = json.loads(args) if args else {}
+            except json.JSONDecodeError:
+                args = None
 
-        if fn_name not in FUNCTIONS:
+        if not isinstance(args, dict):
+            result = {"error": "Function arguments must be a JSON object."}
+        elif fn_name not in FUNCTIONS:
             result = {"error": f"Unknown function: {fn_name}"}
         else:
             if fn_name == "search":
@@ -171,7 +195,7 @@ def run_agent(messages, response):
                 }
             else:
                 response["is_final"] = False
-                response["progress_feedback"] = f"Calling: {fn_name}({args})"
+                response["progress_feedback"] = progress_feedback(fn_name, args)
                 try:
                     result = FUNCTIONS[fn_name](**args)
                 except Exception as e:
