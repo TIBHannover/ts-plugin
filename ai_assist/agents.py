@@ -12,6 +12,8 @@ from ai_assist.functions import (
 )
 from openai import OpenAI
 
+from ai_assist.vars import MAX_INITIAL_SEARCH_CALLS
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["LLM_API_KEY"],
@@ -131,7 +133,8 @@ def run_agent(messages, response):
     available_tools = [
         tool
         for tool in TOOLS
-        if response["search_call_count"] < 3 or tool["function"]["name"] != "search"
+        if response["search_call_count"] < MAX_INITIAL_SEARCH_CALLS
+        or tool["function"]["name"] != "search"
     ]
     message, usage = call_openrouter(messages, available_tools)
     response["usage_stats"]["prompt_tokens"] += usage.get("prompt_tokens", 0)
@@ -189,7 +192,7 @@ def run_agent(messages, response):
         else:
             if fn_name == "search":
                 response["search_call_count"] += 1
-            if response["search_call_count"] > 3:
+            if response["search_call_count"] > MAX_INITIAL_SEARCH_CALLS:
                 result = {
                     "error": "Too many search calls. Use search_under_term instead."
                 }
