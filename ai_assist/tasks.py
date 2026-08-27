@@ -38,6 +38,7 @@ AGENT_MAX_REJECTIONS = settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS
 
 @shared_task
 def run_agent_task(run_id, input_text):
+    # the task gets triggered by the client when calling the start_agent view.
     try:
         if not redis_client.blpop(
             run_redis_key(run_id, RUN_REDIS_KEY_READY),
@@ -68,6 +69,7 @@ def run_agent_task(run_id, input_text):
 
 @shared_task
 def resume_agent_task(run_id):
+    # this runs when there is an event in the redis queue that indicates the agent should resume.
     try:
         state_json = redis_client.get(run_redis_key(run_id, RUN_REDIS_KEY_STATE))
         if not state_json:
