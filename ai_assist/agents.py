@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from typing import Any
@@ -91,38 +92,62 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
         return (
             False,
             "",
-            "Your final response is not valid JSON. Return only a JSON object with parent_label, ontology, and parent_iri.",
+            "Your final response is not valid JSON. Return only a JSON object with exactly three candidates.",
         )
 
     if not isinstance(response, dict):
         return (
             False,
             "",
-            "Your final response must be a JSON object with parent_label, ontology, and parent_iri.",
+            "Your final response must be a JSON object with exactly three candidates.",
         )
 
-    parent_iri = response.get("parent_iri")
-    ontology_id = response.get("ontology") or response.get("ontologyId")
-    if not parent_iri:
-        return (
-            False,
-            "",
-            "Your final response does not include parent_iri. Continue searching and return a valid existing parent_iri.",
-        )
-    if not ontology_id:
-        return (
-            False,
-            "",
-            "Your final response does not include ontology. Continue searching and return the ontology id for parent_iri.",
-        )
+    candidates = response.get("candidates")
+    if not isinstance(candidates, list) or len(candidates) != 3:
+        return False, "", "Your final response must include exactly three candidates."
 
-    term_detail = get_term_detail(parent_iri, ontology_id)
-    if isinstance(term_detail, str) and term_detail.startswith("Error:"):
-        return (
-            False,
-            "",
-            f"The parent_iri does not exist in ontology {ontology_id}: {parent_iri}. Continue searching and return an existing term.",
+    candidate_ids = set()
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            return False, "", "Each candidate must be a JSON object."
+        parent_label = candidate.get("parent_label")
+        parent_iri = candidate.get("parent_iri")
+        ontology_id = candidate.get("ontology") or candidate.get("ontologyId")
+        if not all(
+            isinstance(value, str) and value
+            for value in (parent_label, parent_iri, ontology_id)
+        ):
+            return False, "", "Each candidate must include parent_label, parent_iri, and ontology."
+        parent_label = parent_label.strip()
+        ontology_id = ontology_id.strip()
+        parent_iri = parent_iri.strip()
+        if not parent_label or not ontology_id or not parent_iri:
+            return False, "", "Each candidate must include parent_label, parent_iri, and ontology."
+        candidate_id = (ontology_id.casefold(), parent_iri)
+        if candidate_id in candidate_ids:
+            return False, "", "Return three distinct candidates."
+        candidate_ids.add(candidate_id)
+        candidates[index] = {
+            "parent_label": parent_label,
+            "ontology": ontology_id,
+            "parent_iri": parent_iri,
+        }
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        term_details = executor.map(
+            get_term_detail,
+            (candidate["parent_iri"] for candidate in candidates),
+            (candidate["ontology"] for candidate in candidates),
         )
+        for candidate, term_detail in zip(candidates, term_details):
+            parent_iri = candidate["parent_iri"]
+            ontology_id = candidate["ontology"]
+            if isinstance(term_detail, str) and term_detail.startswith("Error:"):
+                return (
+                    False,
+                    "",
+                    f"The parent_iri does not exist in ontology {ontology_id}: {parent_iri}. Continue searching and return an existing term.",
+                )
 
     return True, json.dumps(response), ""
 
@@ -161,9 +186,7 @@ def run_agent(messages, response):
         is_valid, final_response, feedback = validate_final_response(content)
         if is_valid:
             temp = json.loads(final_response)
-            response["parent_label"] = temp["parent_label"]
-            response["ontology"] = temp["ontology"]
-            response["parent_iri"] = temp["parent_iri"]
+            response["candidates"] = temp["candidates"]
             response["error"] = None
             response["is_final"] = True
             return

@@ -186,7 +186,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
                         "type": CHANNEL_EVENT_TYPE_AGENT_EVENT,
                         "payload": {
                             "type": SERVER_MESSAGE_TYPE_QUESTION,
-                            "message": "Why do you reject this recommendation?",
+                            "message": "Why do you reject these recommendations?",
                         },
                     },
                 )
@@ -228,8 +228,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
                 return
             if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
                 message.set_message(
-                    f"The user rejected this recommendation because: {user_message}. "
-                    "Find a different suitable parent term."
+                    f"The user rejected these recommendations because: {user_message}. "
+                    "Find three different suitable parent-term candidates."
                 )
             # we rpush the message to redis list. rpush because the agent waits/blocks until a message is available.
             await sync_to_async(redis_client.rpush)(

@@ -96,9 +96,7 @@ def resume_agent_task(run_id):
 
 def new_response():
     return {
-        "parent_label": "",
-        "ontology": "",
-        "parent_iri": "",
+        "candidates": [],
         "error": None,
         "is_final": False,
         "usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
@@ -172,9 +170,7 @@ def emit_done(response, run_id):
     emit(
         {
             "type": SERVER_MESSAGE_TYPE_DONE,
-            "parent_label": response.get("parent_label", "N/A"),
-            "ontology": response.get("ontology", "N/A"),
-            "parent_iri": response.get("parent_iri", "N/A"),
+            "candidates": response.get("candidates", []),
             "error": response.get("error", ""),
         },
         run_id,
@@ -185,9 +181,7 @@ def emit_no_parent_found(run_id):
     emit(
         {
             "type": SERVER_MESSAGE_TYPE_DONE,
-            "parent_label": "",
-            "ontology": "",
-            "parent_iri": "",
+            "candidates": [],
             "error": f"Unable to find a suitable parent term after {AGENT_MAX_REJECTIONS + 1} rejected recommendations.",
         },
         run_id,

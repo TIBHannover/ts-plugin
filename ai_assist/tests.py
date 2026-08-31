@@ -2,7 +2,7 @@ import json
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, call, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from . import agents, tasks
@@ -133,11 +133,11 @@ class StartAgentViewTests(TestCase):
         self.assertTrue(any(key.endswith(":socket_token") for key in deleted_keys))
 
 class AgentTests(TestCase):
-    @patch("ai_assist.agents.validate_final_response", return_value=(True, '{"parent_label": "P", "ontology": "O", "parent_iri": "I"}', ""))
+    @patch("ai_assist.agents.validate_final_response", return_value=(True, '{"candidates": [{"parent_label": "P", "ontology": "O", "parent_iri": "I"}, {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"}, {"parent_label": "P3", "ontology": "O", "parent_iri": "I3"}]}', ""))
     @patch("ai_assist.agents.call_openrouter")
     def test_run_agent_records_final_json_response(self, call_openrouter, validate):
         call_openrouter.return_value = (
-            {"content": '{"parent_label": "P", "ontology": "O", "parent_iri": "I"}'},
+            {"content": '{"candidates": [{"parent_label": "P", "ontology": "O", "parent_iri": "I"}, {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"}, {"parent_label": "P3", "ontology": "O", "parent_iri": "I3"}]}'},
             {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         )
         result = {"usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, "search_call_count": 0, "is_final": False, "needs_user_input": False}
@@ -146,7 +146,7 @@ class AgentTests(TestCase):
         agents.run_agent(messages, result)
 
         self.assertTrue(result["is_final"])
-        self.assertEqual(result["parent_iri"], "I")
+        self.assertEqual(result["candidates"][0]["parent_iri"], "I")
         self.assertEqual(result["usage_stats"]["total_tokens"], 3)
         self.assertEqual(messages[-1]["content"], call_openrouter.return_value[0]["content"])
         validate.assert_called_once()
@@ -166,8 +166,52 @@ class AgentTests(TestCase):
         self.assertEqual(result["question"], "Which domain should I use?")
         self.assertFalse(result["is_final"])
 
+    @patch("ai_assist.agents.get_term_detail", return_value={})
+    def test_validate_final_response_requires_three_distinct_candidates(self, get_term_detail):
+        content = json.dumps(
+            {
+                "candidates": [
+                    {"parent_label": "P", "ontology": "O", "parent_iri": "I"},
+                    {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"},
+                ]
+            }
+        )
+
+        is_valid, _, _ = agents.validate_final_response(content)
+
+        self.assertFalse(is_valid)
+        get_term_detail.assert_not_called()
+
 
 class AgentTaskTests(TestCase):
+    @patch("ai_assist.tasks.cleanup_run")
+    @patch("ai_assist.tasks.emit_no_parent_found")
+    @patch("ai_assist.tasks.redis_client")
+    @patch("ai_assist.tasks.AGENT_MAX_REJECTIONS", 1)
+    def test_resume_after_rejection_limit_terminates_and_cleans_up(
+        self, redis, emit_no_parent_found, cleanup
+    ):
+        redis.get.side_effect = [json.dumps({"messages": [], "response": tasks.new_response(), "steps": 1}), "2"]
+
+        tasks.resume_agent_task("run-1")
+
+        emit_no_parent_found.assert_called_once_with("run-1")
+        cleanup.assert_called_once_with("run-1")
+
+    @patch("ai_assist.tasks.emit")
+    def test_emit_done_sends_candidates(self, emit):
+        candidates = [
+            {"parent_label": "P", "ontology": "O", "parent_iri": "I"},
+            {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"},
+            {"parent_label": "P3", "ontology": "O", "parent_iri": "I3"},
+        ]
+
+        tasks.emit_done({"candidates": candidates, "error": None}, "run-1")
+
+        emit.assert_called_once_with(
+            {"type": "done", "candidates": candidates, "error": None}, "run-1"
+        )
+
     @patch("ai_assist.tasks.fail_run")
     @patch("ai_assist.tasks.redis_client")
     def test_initial_ready_queue_failure_marks_run_failed(self, redis, fail_run):
@@ -324,6 +368,65 @@ class AgentConsumerTests(IsolatedAsyncioTestCase):
             "agent:run-1:awaiting_input", "agent:run-1:resuming"
         )
         send_task.assert_called_once_with("ai_assist.tasks.resume_agent_task", args=["run-1"])
+
+    @patch("ai_assist.consumers.redis_client")
+    async def test_reject_waiting_recommendations_requests_a_reason(self, redis):
+        consumer = self.make_consumer()
+        redis.get.return_value = "1"
+        redis.set.return_value = True
+        redis.incr.return_value = 1
+
+        with patch("ai_assist.consumers.sync_to_async", side_effect=lambda fn: AsyncMock(side_effect=fn)):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.setex.assert_called_once_with(
+            "agent:run-1:awaiting_rejection_reason", 3600, "1"
+        )
+        redis.delete.assert_called_once_with(
+            "agent:run-1:awaiting_rejection", "agent:run-1:resuming"
+        )
+        consumer.channel_layer.group_send.assert_awaited_once_with(
+            "agent_run_run-1",
+            {
+                "type": "agent.event",
+                "payload": {
+                    "type": "question",
+                    "message": "Why do you reject these recommendations?",
+                },
+            },
+        )
+
+    @patch("ai_assist.consumers.redis_client")
+    async def test_reject_without_waiting_recommendations_is_a_no_op(self, redis):
+        consumer = self.make_consumer()
+        redis.get.return_value = None
+
+        with patch("ai_assist.consumers.sync_to_async", side_effect=lambda fn: AsyncMock(side_effect=fn)):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.set.assert_not_called()
+        redis.incr.assert_not_called()
+        consumer.channel_layer.group_send.assert_not_awaited()
+
+    @override_settings(TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS=1)
+    @patch("ai_assist.consumers.redis_client")
+    async def test_reject_over_limit_dispatches_termination_resume(self, redis):
+        consumer = self.make_consumer()
+        redis.get.return_value = "1"
+        redis.set.return_value = True
+        redis.incr.return_value = 2
+
+        with patch("ai_assist.consumers.sync_to_async", side_effect=lambda fn: AsyncMock(side_effect=fn)), patch(
+            "ai_assist.consumers.current_app.send_task"
+        ) as send_task:
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        send_task.assert_called_once_with(
+            "ai_assist.tasks.resume_agent_task", args=["run-1"]
+        )
+        redis.delete.assert_called_once_with(
+            "agent:run-1:awaiting_rejection", "agent:run-1:resuming"
+        )
 
     @patch("ai_assist.consumers.redis_client")
     async def test_resume_dispatch_failure_keeps_awaiting_state(self, redis):
