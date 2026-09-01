@@ -158,6 +158,7 @@ def run_conversation(run_id, state):
 
 
 def save_state(run_id, state, awaiting_key=RUN_REDIS_KEY_AWAITING_INPUT):
+    # this saves two things in redis: the last state for the agnet and also the action key for the next step for the consumer
     redis_client.setex(
         run_redis_key(run_id, RUN_REDIS_KEY_STATE), RUN_TTL_SECONDS, json.dumps(state)
     )
@@ -189,7 +190,7 @@ def emit_no_parent_found(run_id):
 
 
 def emit(payload, run_id):
-    """Deliver a worker event to the Channels group holding the client socket."""
+    # send a message to the client holding the websocket connection. consumers.py handles this message in agent_event.
     async_to_sync(get_channel_layer().group_send)(
         run_group_name(run_id),
         {"type": CHANNEL_EVENT_TYPE_AGENT_EVENT, "payload": payload},

@@ -53,7 +53,6 @@ def call_openrouter(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Run one non-streaming LLM turn and normalize the SDK objects for storage."""
     response = client.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -65,6 +64,7 @@ def call_openrouter(
 
 
 def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
+    """Generate a prompt for the assistant to provide feedback on the current step."""
     if fn_name == "search":
         ontology = args.get("ontologyId")
         suffix = f" in {ontology}" if ontology else ""
@@ -117,12 +117,20 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
             isinstance(value, str) and value
             for value in (parent_label, parent_iri, ontology_id)
         ):
-            return False, "", "Each candidate must include parent_label, parent_iri, and ontology."
+            return (
+                False,
+                "",
+                "Each candidate must include parent_label, parent_iri, and ontology.",
+            )
         parent_label = parent_label.strip()
         ontology_id = ontology_id.strip()
         parent_iri = parent_iri.strip()
         if not parent_label or not ontology_id or not parent_iri:
-            return False, "", "Each candidate must include parent_label, parent_iri, and ontology."
+            return (
+                False,
+                "",
+                "Each candidate must include parent_label, parent_iri, and ontology.",
+            )
         candidate_id = (ontology_id.casefold(), parent_iri)
         if candidate_id in candidate_ids:
             return False, "", "Return three distinct candidates."
@@ -153,8 +161,9 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
 
 
 def run_agent(messages, response):
-    """Advance the LLM by one turn, including any requested terminology tools."""
     response["progress_feedback"] = ""
+
+    # remove the search tool after a certain number of calls to force the agent to avoid broad searches
     available_tools = [
         tool
         for tool in TOOLS
