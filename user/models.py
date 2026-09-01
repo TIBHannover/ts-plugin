@@ -146,6 +146,20 @@ class UserModel(models.Model):
         return []
 
 
+class OAuthLoginTransaction(models.Model):
+    state_hash = models.CharField(max_length=64, unique=True)
+    session_key_hash = models.CharField(max_length=64)
+    auth_provider = models.CharField(max_length=32)
+    client_ts_id = models.CharField(max_length=64)
+    code_verifier = models.CharField(max_length=128, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "oauth_login_transactions"
+        indexes = [models.Index(fields=["session_key_hash", "expires_at"])]
+
+
 class RoleModel(models.Model):
     user = models.ForeignKey(
         UserModel, on_delete=models.CASCADE, related_name="user_roles"

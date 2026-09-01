@@ -1,4 +1,7 @@
+import base64
+import hashlib
 import secrets
+import time
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required,
@@ -11,7 +14,7 @@ from user_service.middlewares.request import (
 )
 from user_service.middlewares.client_id import get_client_id_from_request
 from user.libs.auth import Auth
-from user.models import UserModel, RoleModel, SearchSettingModel
+from user.models import OAuthLoginTransaction, UserModel, RoleModel, SearchSettingModel
 from django.http import Http404, HttpResponseServerError
 from django.views import View
 import json
@@ -20,9 +23,12 @@ import datetime
 from http.cookies import Morsel
 from urllib.parse import urlparse
 from django.conf import settings
-import secrets
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from user_service.libs.utils import make_hash
+from django.db import transaction
+from django.utils import timezone
+from django.contrib.sessions.models import Session
 
 
 def set_partitioned_cookie(response, key):
@@ -37,6 +43,89 @@ def origin_requires_partitioned_cookie(request):
         return False
     origin_host = urlparse(origin).netloc
     return origin_host in getattr(settings, "AUTH_COOKIE_PARTITIONED_ORIGINS", [])
+
+
+OAUTH_STATE_MAX_AGE = 600
+MAX_OAUTH_TRANSACTIONS_PER_SESSION = 5
+
+
+def hash_login_value(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def get_login_transaction(request, auth_object_dict):
+    if not auth_object_dict["state"] or not request.session.session_key:
+        raise PermissionDenied("OAuth login transaction is invalid")
+
+    with transaction.atomic():
+        login_transaction = (
+            OAuthLoginTransaction.objects.select_for_update()
+            .filter(state_hash=hash_login_value(auth_object_dict["state"]))
+            .first()
+        )
+        if (
+            not login_transaction
+            or login_transaction.expires_at < timezone.now()
+            or login_transaction.session_key_hash
+            != hash_login_value(request.session.session_key)
+            or login_transaction.auth_provider != auth_object_dict["auth_provider"]
+            or login_transaction.client_ts_id != auth_object_dict["client_ts_id"]
+        ):
+            raise PermissionDenied("OAuth login transaction is invalid")
+        code_verifier = login_transaction.code_verifier
+        login_transaction.delete()
+    return {"code_verifier": code_verifier}
+
+
+@error_handler_decorator
+@require_http_methods(["GET"])
+def login_state(request):
+    auth_object_dict = get_headers_dict()
+    auth = Auth(**auth_object_dict)
+    auth.abort_if_client_app_not_valid()
+    auth.abort_if_not_auth_provider()
+    state = auth_object_dict["state"]
+    if not state or len(state) != 64:
+        raise PermissionDenied("OAuth login state is invalid")
+
+    transaction_defaults = {
+        "auth_provider": auth_object_dict["auth_provider"],
+        "client_ts_id": auth_object_dict["client_ts_id"],
+    }
+    response_data = {}
+    if auth_object_dict["auth_provider"] in settings.AUTH_PROVIDERS_WITH_PKCE:
+        verifier = secrets.token_urlsafe(64)
+        transaction_defaults["code_verifier"] = verifier
+        digest = hashlib.sha256(verifier.encode()).digest()
+        response_data["code_challenge"] = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+    request.session["oauth_login_transaction"] = True
+    request.session.save()
+    now = timezone.now()
+    session_key_hash = hash_login_value(request.session.session_key)
+    state_hash = hash_login_value(state)
+    with transaction.atomic():
+        Session.objects.select_for_update().get(session_key=request.session.session_key)
+        OAuthLoginTransaction.objects.filter(expires_at__lt=now).delete()
+        if (
+            OAuthLoginTransaction.objects.filter(
+                session_key_hash=session_key_hash,
+                expires_at__gte=now,
+            )
+            .exclude(state_hash=state_hash)
+            .count()
+            >= MAX_OAUTH_TRANSACTIONS_PER_SESSION
+        ):
+            raise PermissionDenied("Too many OAuth login attempts")
+        OAuthLoginTransaction.objects.update_or_create(
+            state_hash=state_hash,
+            defaults={
+                "session_key_hash": session_key_hash,
+                "expires_at": now + datetime.timedelta(seconds=OAUTH_STATE_MAX_AGE),
+                **transaction_defaults,
+            },
+        )
+    return JsonResponse({"_result": response_data})
 
 
 @require_http_methods(["GET"])
@@ -60,6 +149,8 @@ def login(request):
     auth = Auth(**auth_object_dict)
     auth.abort_if_client_app_not_valid()
     auth.abort_if_not_auth_provider()
+    transaction = get_login_transaction(request, auth_object_dict)
+    auth.code_verifier = transaction.get("code_verifier")
     auth_response_dict = auth.authenticate()
     if auth_response_dict:
         created_at = _time.now()

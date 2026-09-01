@@ -4,7 +4,7 @@ from django.conf import settings
 
 class AaiLib:
     @staticmethod
-    def authenticate(code, client_ts_id=None):
+    def authenticate(code, client_ts_id=None, code_verifier=None):
         redirect_url = settings.DEFAULT_FRONTEND_REDIRECT_URL
         if client_ts_id and client_ts_id == "general":
             redirect_url = settings.GENERAL_FRONTEND_REDIRECT_URL

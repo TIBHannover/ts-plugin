@@ -136,6 +136,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-Frontend-Id",
     "X-TS-Auth-Provider",
     "X-TS-Auth-APP-Code",
+    "X-TS-OAuth-State",
     "X-TS-Orcid-Id",
     "X-TS-User-Token",
     "X-TS-User-Name",
@@ -169,6 +170,7 @@ INSTALLED_APPS = [
     "ts",
     "django_celery_beat",
 ]
+AUTH_PROVIDERS_WITH_PKCE = ["github", "gitlab", "orcid"]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -250,6 +252,12 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-expired-oauth-login-transactions": {
+        "task": "user.tasks.cleanup_expired_oauth_login_transactions",
+        "schedule": 300,
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
