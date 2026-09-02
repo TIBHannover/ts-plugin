@@ -8,6 +8,7 @@ from user_service.libs.decorators import (
 )
 from user_service.libs.utils import create_json_response
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 from user_service.middlewares.request import (
     get_headers_dict,
     get_username_from_request,
@@ -141,8 +142,9 @@ def close_endpoint(request):
     return create_json_response({"response": "closed"})
 
 
+@never_cache
 @error_handler_decorator
-@require_http_methods(["GET"])
+@require_http_methods(["POST"])
 def login(request):
     _time = datetime.datetime
     auth_object_dict = get_headers_dict()
@@ -202,9 +204,10 @@ def login(request):
     return create_json_response({"issue": "auth is rejected"})
 
 
+@never_cache
+@require_http_methods(["POST"])
 @error_handler_decorator
 @authentication_required
-@require_http_methods(["GET"])
 def logout(request):
     response = JsonResponse({"_result": "logged out"})
     response.set_cookie(

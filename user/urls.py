@@ -5,9 +5,9 @@ from django.views.decorators.csrf import csrf_exempt
 urlpatterns = [
     path("ping/", views.ping, name="ping"),
     path("close_endpoint/", views.close_endpoint, name="close_endpoint"),
-    path("login/", views.login, name="login"),
+    path("login/", csrf_exempt(views.login), name="login"),
     path("login/state/", views.login_state, name="login_state"),
-    path("logout/", views.logout, name="logout"),
+    path("logout/", csrf_exempt(views.logout), name="logout"),
     path("validate_login/", views.validate_login, name="validate_login"),
     path("settings/", csrf_exempt(views.save_settings), name="settings"),
     path(

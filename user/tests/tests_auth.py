@@ -130,7 +130,7 @@ class TestAuth(BaseTest):
     def test_logout_should_delete_partitioned_jwt_cookie(self):
         headers = copy.copy(self.github_request_headers)
         headers["Origin"] = "https://frontend.test"
-        response = self.client.get("/user/logout/", headers=headers)
+        response = self.client.post("/user/logout/", headers=headers)
 
         jwt_cookie = response.cookies.get("jwt")
         self.assertIsNotNone(jwt_cookie)
@@ -138,6 +138,11 @@ class TestAuth(BaseTest):
         self.assertTrue(jwt_cookie["secure"])
         self.assertEqual(jwt_cookie["samesite"], "None")
         self.assertTrue(jwt_cookie["partitioned"])
+        self.assertIn("no-store", response["Cache-Control"])
+
+    def test_logout_should_reject_get_requests(self):
+        response = self.client.get("/user/logout/")
+        self.assertEqual(response.status_code, 405)
 
     def test_auth_should_fail_with_wrong_api_key(self):
         headers = copy.copy(self.github_request_headers)
