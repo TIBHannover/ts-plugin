@@ -24,6 +24,7 @@ from .vars import (
     RUN_REDIS_KEY_INPUT,
     RUN_REDIS_KEY_READY,
     RUN_REDIS_KEY_REJECTIONS,
+    RUN_REDIS_KEY_SEARCH_REJECTIONS,
     RUN_REDIS_KEY_RESUMING,
     RUN_REDIS_KEY_SOCKET_TOKEN,
     RUN_TTL_SECONDS,
@@ -159,12 +160,17 @@ class AgentConsumer(AsyncWebsocketConsumer):
             if not resuming:
                 return
             # increment the rejection count.
+            rejection_key = (
+                RUN_REDIS_KEY_SEARCH_REJECTIONS
+                if waiting == "search"
+                else RUN_REDIS_KEY_REJECTIONS
+            )
             rejection_count = await sync_to_async(redis_client.incr)(
-                run_redis_key(self.run_id, RUN_REDIS_KEY_REJECTIONS)
+                run_redis_key(self.run_id, rejection_key)
             )
             # expire the counter after RUN_TTL_SECONDS.
             await sync_to_async(redis_client.expire)(
-                run_redis_key(self.run_id, RUN_REDIS_KEY_REJECTIONS), RUN_TTL_SECONDS
+                run_redis_key(self.run_id, rejection_key), RUN_TTL_SECONDS
             )
             # we allow a client to reject an agent answer for a certain amout of times.
             if rejection_count <= settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS:
@@ -229,7 +235,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
             if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
                 message.set_message(
                     f"The user rejected these recommendations because: {user_message}. "
-                    "Find three different suitable parent-term candidates."
+                    "Return different suitable candidates."
                 )
             # we rpush the message to redis list. rpush because the agent waits/blocks until a message is available.
             await sync_to_async(redis_client.rpush)(

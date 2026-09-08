@@ -6,26 +6,52 @@ TS_BASE_URL = "https://api.terminology.tib.eu/api/v2/"
 TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
 
 DEFNITION_MAX_LENGTH = 100
+REQUEST_TIMEOUT = (3.05, 10)
 
 
-def search(query: str, ontologyId: str = "") -> list[dict[str, Any]]:
+def search(
+    query: str,
+    ontologyId: str = "",
+    excludedCandidates: list[dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
     try:
-        url = f"{TS_BASE_URL}entities?search={query}&page=0&size=20&lang=en&exclusive=true&facetFields=type+ontologyId&type=class"
+        params = {
+            "search": query,
+            "page": 0,
+            "size": 20,
+            "lang": "en",
+            "exclusive": "true",
+            "facetFields": "type ontologyId",
+            "type": "class",
+        }
         if ontologyId:
             onto_details = get_ontology_detail(ontologyId)
             if "Error" in onto_details:
                 raise Exception("Ontology not found")
-            url += f"&ontology={ontologyId.lower()}"
-        resp = requests.get(url)
+            params["ontology"] = ontologyId.lower()
+        resp = requests.get(
+            f"{TS_BASE_URL}entities", params=params, timeout=REQUEST_TIMEOUT
+        )
         resp = resp.json()
         resp = resp["elements"]
         res = []
+        excluded = {
+            (candidate["ontologyId"].casefold(), candidate["iri"])
+            for candidate in excludedCandidates or []
+        }
         for r in resp:
+            if (r["ontologyId"].casefold(), r["iri"]) in excluded:
+                continue
+            definition = r.get("definition", "")
             res.append(
                 {
                     "label": r["label"],
                     "iri": r["iri"],
-                    "definition": r.get("definition", "")[:DEFNITION_MAX_LENGTH],
+                    "definition": (
+                        definition[:DEFNITION_MAX_LENGTH]
+                        if isinstance(definition, str)
+                        else ""
+                    ),
                     "ontologyId": r["ontologyId"],
                     "parent_iri": r.get("directParent", ""),
                     "synonym": r.get("synonym", []),
@@ -38,9 +64,23 @@ def search(query: str, ontologyId: str = "") -> list[dict[str, Any]]:
 
 def search_under_term(query: str, iri: str):
     try:
-        iri = urllib.parse.quote(iri, safe="")
         resp = requests.get(
-            f"{TS_BASE_URL_V1}search?q={query}&exclusive=false&option=LINEAR&fieldList=iri%2Clabel%2Cshort_form%2Cobo_id%2Contology_name&queryFields=iri%2Clabel%2Cshort_form%2Contology_name&exact=false&obsoletes=false&local=false&allChildrenOf={iri}&rows=20&start=0&format=json"
+            f"{TS_BASE_URL_V1}search",
+            params={
+                "q": query,
+                "exclusive": "false",
+                "option": "LINEAR",
+                "fieldList": "iri,label,short_form,obo_id,ontology_name",
+                "queryFields": "iri,label,short_form,ontology_name",
+                "exact": "false",
+                "obsoletes": "false",
+                "local": "false",
+                "allChildrenOf": iri,
+                "rows": 20,
+                "start": 0,
+                "format": "json",
+            },
+            timeout=REQUEST_TIMEOUT,
         )
         resp = resp.json()
         resp = resp["response"]["docs"]
@@ -65,7 +105,8 @@ def get_term_detail(iri: str, ontologyId: str):
     try:
         iri = urllib.parse.quote(iri, safe="")
         resp = requests.get(
-            f"{TS_BASE_URL}ontologies/{ontologyId}/entities/{urllib.parse.quote(iri, safe='')}?lang=en"
+            f"{TS_BASE_URL}ontologies/{ontologyId}/entities/{urllib.parse.quote(iri, safe='')}?lang=en",
+            timeout=REQUEST_TIMEOUT,
         )
         resp = resp.json()
         return {
@@ -83,15 +124,21 @@ def get_term_children(iri: str, ontologyId: str):
     try:
         iri = urllib.parse.quote(iri, safe="")
         resp = requests.get(
-            f"{TS_BASE_URL}ontologies/{ontologyId}/classes/{urllib.parse.quote(iri, safe='')}/hierarchicalChildren?size=1000&lang=en&includeObsoleteEntities=false"
+            f"{TS_BASE_URL}ontologies/{ontologyId}/classes/{urllib.parse.quote(iri, safe='')}/hierarchicalChildren?size=1000&lang=en&includeObsoleteEntities=false",
+            timeout=REQUEST_TIMEOUT,
         )
         resp = resp.json()
         res = []
         for r in resp["elements"][:10]:
+            definition = r.get("definition", "")
             res.append(
                 {
                     "label": r["label"],
-                    "definition": r.get("definition", "")[:DEFNITION_MAX_LENGTH],
+                    "definition": (
+                        definition[:DEFNITION_MAX_LENGTH]
+                        if isinstance(definition, str)
+                        else ""
+                    ),
                     "ontologyId": r["ontologyId"],
                     "synonym": r.get("synonym", []),
                 }
@@ -103,11 +150,19 @@ def get_term_children(iri: str, ontologyId: str):
 
 def get_ontology_detail(ontologyId: str):
     try:
-        resp = requests.get(f"{TS_BASE_URL}ontologies/{ontologyId}?lang=en")
+        resp = requests.get(
+            f"{TS_BASE_URL}ontologies/{ontologyId}?lang=en",
+            timeout=REQUEST_TIMEOUT,
+        )
         resp = resp.json()
+        definition = resp.get("definition", "")
         return {
             "label": resp["label"],
-            "definition": resp.get("definition", "")[:DEFNITION_MAX_LENGTH],
+            "definition": (
+                definition[:DEFNITION_MAX_LENGTH]
+                if isinstance(definition, str)
+                else ""
+            ),
         }
     except:
         return f"Error: no ontology found for {ontologyId}"

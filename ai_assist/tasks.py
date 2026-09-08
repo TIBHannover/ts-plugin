@@ -6,7 +6,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 
 from ai_assist.agents import run_agent
-from ai_assist.prompts import PROMPT
+from ai_assist.prompts import SEARCH_PROMPT, TERM_REQUEST_PROMPT
 from ai_assist.vars import (
     CHANNEL_EVENT_TYPE_AGENT_EVENT,
     READY_WAIT_TIMEOUT_SECONDS,
@@ -17,6 +17,7 @@ from ai_assist.vars import (
     RUN_REDIS_KEY_INPUT,
     RUN_REDIS_KEY_READY,
     RUN_REDIS_KEY_REJECTIONS,
+    RUN_REDIS_KEY_SEARCH_REJECTIONS,
     RUN_REDIS_KEY_STATE,
     RUN_REDIS_KEYS,
     RUN_TTL_SECONDS,
@@ -33,11 +34,12 @@ from ai_assist.vars import (
 from .redis_client import redis_client
 
 AGENT_MAX_LOOPS = settings.TERM_REQUEST_AI_ASSIST_MAX_LOOPS
+SEARCH_MAX_LOOPS = settings.SEARCH_AI_ASSIST_MAX_LOOPS
 AGENT_MAX_REJECTIONS = settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS
 
 
 @shared_task
-def run_agent_task(run_id, input_text):
+def run_agent_task(run_id, input_text, workflow="term_request"):
     # the task gets triggered by the client when calling the start_agent view.
     try:
         if not redis_client.blpop(
@@ -48,11 +50,13 @@ def run_agent_task(run_id, input_text):
             return
         state = {
             "messages": [
-                {"role": "system", "content": PROMPT},
+                {"role": "system", "content": SEARCH_PROMPT},
                 {"role": "user", "content": input_text},
             ],
-            "response": new_response(),
+            "response": new_response("search"),
             "steps": 0,
+            "workflow": workflow,
+            "input_text": input_text,
         }
         emit(
             {
@@ -74,18 +78,47 @@ def resume_agent_task(run_id):
         state_json = redis_client.get(run_redis_key(run_id, RUN_REDIS_KEY_STATE))
         if not state_json:
             return
-        rejection_count = int(
-            redis_client.get(run_redis_key(run_id, RUN_REDIS_KEY_REJECTIONS)) or 0
+        state = normalize_state(json.loads(state_json))
+        rejection_key = (
+            RUN_REDIS_KEY_SEARCH_REJECTIONS
+            if state["response"].get("phase") == "search"
+            else RUN_REDIS_KEY_REJECTIONS
         )
-        if rejection_count > AGENT_MAX_REJECTIONS:
-            emit_no_parent_found(run_id)
+        rejection_count = int(
+            redis_client.get(run_redis_key(run_id, rejection_key)) or 0
+        )
+        if (
+            state.get("workflow") == "term_request"
+            and state["response"].get("phase") == "search"
+            and rejection_count
+        ):
+            start_term_request_phase(state)
+            redis_client.delete(run_redis_key(run_id, RUN_REDIS_KEY_SEARCH_REJECTIONS))
+            rejection_count = 0
+        elif rejection_count > AGENT_MAX_REJECTIONS:
+            if state["response"].get("phase") == "search":
+                emit_no_candidates_found(run_id, "search")
+            else:
+                emit_no_parent_found(run_id)
             cleanup_run(run_id)
             return
-        state = json.loads(state_json)
         if rejection_count > state.get("retry_started", 0):
             state["steps"] = 0
             state["retry_started"] = rejection_count
             state["response"]["search_call_count"] = 0
+            if state["response"]["phase"] == "search":
+                state["response"]["successful_search_count"] = 0
+                state["response"]["excluded_search_candidates"].extend(
+                    {"ontologyId": candidate["ontologyId"], "iri": candidate["iri"]}
+                    for candidate in state["response"]["candidates"]
+                )
+                state["response"]["search_results"] = []
+                state["response"]["candidates"] = []
+        elif (
+            state["response"].get("phase") == "term_request"
+            and state["response"].get("needs_user_input")
+        ):
+            state["steps"] = 0
         state["response"]["needs_user_input"] = False
         state["response"]["question"] = ""
         state["response"]["is_final"] = False
@@ -94,24 +127,52 @@ def resume_agent_task(run_id):
         fail_run(run_id)
 
 
-def new_response():
+def new_response(phase="term_request"):
     return {
         "candidates": [],
         "error": None,
         "is_final": False,
         "usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         "search_call_count": 0,
+        "successful_search_count": 0,
         "progress_feedback": "",
         "needs_user_input": False,
         "question": "",
+        "phase": phase,
+        "search_results": [],
+        "excluded_search_candidates": [],
+        "clarification_count": 0,
     }
+
+
+def normalize_state(state):
+    """Add fields missing from runs persisted before workflow support."""
+    response = state.setdefault("response", {})
+    if "phase" not in response:
+        state.setdefault("workflow", "term_request")
+        state.setdefault(
+            "input_text",
+            next(
+                (
+                    message.get("content", "")
+                    for message in state.get("messages", [])
+                    if message.get("role") == "user"
+                ),
+                "",
+            ),
+        )
+    for key, value in new_response().items():
+        response.setdefault(key, value)
+    state.setdefault("steps", 0)
+    return state
 
 
 def run_conversation(run_id, state):
     try:
         response = state["response"]
         messages = state["messages"]
-        for step in range(state["steps"], AGENT_MAX_LOOPS):
+        max_loops = SEARCH_MAX_LOOPS if response["phase"] == "search" else AGENT_MAX_LOOPS
+        for step in range(state["steps"], max_loops):
             if is_cancelled(run_id):
                 cleanup_run(run_id)
                 return
@@ -132,6 +193,14 @@ def run_conversation(run_id, state):
                 return
 
             if response["is_final"]:
+                if (
+                    state.get("workflow") == "term_request"
+                    and response["phase"] == "search"
+                    and not response["candidates"]
+                ):
+                    start_term_request_phase(state)
+                    run_conversation(run_id, state)
+                    return
                 save_state(run_id, state, RUN_REDIS_KEY_AWAITING_REJECTION)
                 emit_done(response, run_id)
                 return
@@ -148,7 +217,7 @@ def run_conversation(run_id, state):
         emit(
             {
                 "type": SERVER_MESSAGE_TYPE_ERROR,
-                "message": f"Agent reached the {AGENT_MAX_LOOPS}-step limit without a final response.",
+                "message": f"Agent reached the {max_loops}-step limit without a final response.",
             },
             run_id,
         )
@@ -163,7 +232,13 @@ def save_state(run_id, state, awaiting_key=RUN_REDIS_KEY_AWAITING_INPUT):
         run_redis_key(run_id, RUN_REDIS_KEY_STATE), RUN_TTL_SECONDS, json.dumps(state)
     )
     redis_client.setex(
-        run_redis_key(run_id, awaiting_key), RUN_TTL_SECONDS, REDIS_TRUE_VALUE
+        run_redis_key(run_id, awaiting_key),
+        RUN_TTL_SECONDS,
+        (
+            state["response"]["phase"]
+            if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION
+            else REDIS_TRUE_VALUE
+        ),
     )
 
 
@@ -178,15 +253,30 @@ def emit_done(response, run_id):
     )
 
 
-def emit_no_parent_found(run_id):
+def emit_no_candidates_found(run_id, phase):
+    subject = "matching term" if phase == "search" else "suitable parent term"
     emit(
         {
             "type": SERVER_MESSAGE_TYPE_DONE,
             "candidates": [],
-            "error": f"Unable to find a suitable parent term after {AGENT_MAX_REJECTIONS + 1} rejected recommendations.",
+            "error": f"Unable to find a {subject} after {AGENT_MAX_REJECTIONS + 1} rejected recommendations.",
         },
         run_id,
     )
+
+
+def emit_no_parent_found(run_id):
+    """Backward-compatible alias for the original task helper."""
+    emit_no_candidates_found(run_id, "term_request")
+
+
+def start_term_request_phase(state):
+    state["messages"] = [
+        {"role": "system", "content": TERM_REQUEST_PROMPT},
+        {"role": "user", "content": state["input_text"]},
+    ]
+    state["response"] = new_response("term_request")
+    state["steps"] = 0
 
 
 def emit(payload, run_id):

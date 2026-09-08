@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from user_service.libs.decorators import authentication_required
 
-from .agents import build_user_prompt
+from .agents import build_search_prompt, build_user_prompt
 from .redis_client import redis_client
 from .tasks import run_agent_task
 from .vars import (
@@ -26,7 +26,24 @@ from .vars import (
 @require_POST
 @authentication_required
 def start_agent(request):
-    """Start one bounded assistant run and return its WebSocket address."""
+    """Backward-compatible term-request entry point."""
+    return start_workflow(request, "term_request", include_workflow=False)
+
+
+@require_POST
+@authentication_required
+def start_term_request(request):
+    return start_workflow(request, "term_request")
+
+
+@require_POST
+@authentication_required
+def start_search(request):
+    return start_workflow(request, "search")
+
+
+def start_workflow(request, workflow, include_workflow=True):
+    """Start one bounded assistant workflow and return its WebSocket address."""
     try:
         payload = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
@@ -34,31 +51,40 @@ def start_agent(request):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "Request body must be a JSON object."}, status=400)
 
-    label = payload.get("label")
     description = payload.get("description")
-    category = payload.get("category")
-    if not all(isinstance(value, str) and value.strip() for value in (label, description, category)):
+    if not isinstance(description, str) or not description.strip():
         return JsonResponse(
-            {"error": "'label', 'description', and 'category' must be non-empty strings."},
+            {"error": "'description' must be a non-empty string."},
             status=400,
         )
-    if (
-        len(label) > settings.TERM_REQUEST_INPUT_MAX_LENGTH
-        or len(description) > settings.TERM_REQUEST_INPUT_MAX_LENGTH
-    ):
+    if len(description) > settings.TERM_REQUEST_INPUT_MAX_LENGTH:
         return JsonResponse(
-            {
-                "error": "'label' and 'description' must be at most "
-                f"{settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."
-            },
+            {"error": f"'description' must be at most {settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."},
             status=400,
         )
-    category = next((key for key in CATEGORIES if key.casefold() == category.casefold()), None)
-    if category is None:
-        return JsonResponse({"error": "'category' is not supported."}, status=400)
-
-    category_text = f"{category}:{','.join(CATEGORIES[category])}"
-    input_text = build_user_prompt(label, description, category_text)
+    if workflow == "search":
+        input_text = build_search_prompt(description)
+    else:
+        label = payload.get("label")
+        category = payload.get("category")
+        if not all(isinstance(value, str) and value.strip() for value in (label, category)):
+            return JsonResponse(
+                {"error": "'label', 'description', and 'category' must be non-empty strings."},
+                status=400,
+            )
+        if len(label) > settings.TERM_REQUEST_INPUT_MAX_LENGTH:
+            return JsonResponse(
+                {"error": f"'label' must be at most {settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."},
+                status=400,
+            )
+        category = next((key for key in CATEGORIES if key.casefold() == category.casefold()), None)
+        if category is None:
+            return JsonResponse({"error": "'category' is not supported."}, status=400)
+        input_text = build_user_prompt(
+            label,
+            description,
+            f"{category}:{','.join(CATEGORIES[category])}",
+        )
 
     run_id = str(uuid.uuid4())
     websocket_token = secrets.token_urlsafe(WEBSOCKET_TOKEN_BYTES)
@@ -73,7 +99,10 @@ def start_agent(request):
             RUN_TTL_SECONDS,
             websocket_token,
         )
-        task = run_agent_task.delay(run_id=run_id, input_text=input_text)
+        task_kwargs = {"run_id": run_id, "input_text": input_text}
+        if include_workflow:
+            task_kwargs["workflow"] = workflow
+        task = run_agent_task.delay(**task_kwargs)
     except Exception:
         rollback_run_start(run_id)
         return JsonResponse({"error": "Unable to start the assistant."}, status=503)
@@ -84,6 +113,7 @@ def start_agent(request):
             "task_id": task.id,
             "websocket_path": WEBSOCKET_PATH_TEMPLATE.format(run_id=run_id),
             "websocket_token": websocket_token,
+            "workflow": workflow,
         },
         status=202,
     )
