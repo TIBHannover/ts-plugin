@@ -2,6 +2,7 @@ import json
 import requests
 from typing import TypedDict, Union, List
 from django.conf import settings
+from user_service.libs.safe_http import read_limited, safe_get
 
 
 class ShapeErrorObject(TypedDict):
@@ -22,10 +23,12 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
         contentType = (
             "application/rdf+xml" if ".ttl" not in ontology_purl else "text/turtle"
         )
-        ontologyContent = requests.get(ontology_purl)
-        ontologyContent.raise_for_status()
-        shapeTesterContent = requests.get(settings.ONTOLOGY_SHAPE_TEST_URL)
-        shapeTesterContent.raise_for_status()
+        ontologyContent = safe_get(ontology_purl)
+        if not 200 <= ontologyContent.status_code < 300:
+            raise ValueError("Ontology could not be fetched")
+        shapeTesterContent = safe_get(settings.ONTOLOGY_SHAPE_TEST_URL)
+        if not 200 <= shapeTesterContent.status_code < 300:
+            raise ValueError("Shape rules could not be fetched")
         data = {
             "contentToValidate": ontologyContent.text,
             "contentSyntax": contentType,
@@ -45,10 +48,18 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
             "rdfReportSyntax": "string",
             "wrapReportDataInCDATA": False,
         }
-        response = requests.post(tesetUrl, json=data, headers=headers)
+        response = requests.post(
+            tesetUrl, json=data, headers=headers, timeout=(3, 30), stream=True
+        )
+        try:
+            response_content = read_limited(
+                response.iter_content(64 * 1024), 10 * 1024 * 1024
+            )
+        finally:
+            response.close()
         if response.status_code != 200:
             try:
-                res_content = response.json()
+                res_content = json.loads(response_content)
             except json.decoder.JSONDecodeError:
                 res_content = {"message": "unknown error"}
             return ValidationResult(
@@ -57,7 +68,7 @@ def test(ontology_purl: str) -> Union[ValidationResult, bool]:
                 shape_test_failed=True,
             )
 
-        response_data = response.json()
+        response_data = json.loads(response_content)
         response_data = response_data.get("@graph", None)
         if response_data is None:
             res_content = {"message": "unknown error"}

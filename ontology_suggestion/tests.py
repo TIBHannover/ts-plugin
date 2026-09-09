@@ -4,6 +4,10 @@ import random
 import string
 import copy
 import json
+from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+from user_service.libs.safe_http import SafeRequestError
 
 
 class TestOntologySuggestion(BaseTest):
@@ -63,6 +67,7 @@ class TestOntologySuggestion(BaseTest):
         self.assertEqual(
             response.json()["_result"]["response"], "ontology is suggested successfully"
         )
+
     def test_adopter_request_should_success(self):
         headers = copy.copy(self.github_request_headers)
 
@@ -94,3 +99,60 @@ class TestOntologySuggestion(BaseTest):
         )
 
         self.assertEqual(response.status_code, 200)
+
+
+class TestPurlValidator(SimpleTestCase):
+    @patch("ontology_suggestion.views.safe_head")
+    def test_valid_purl(self, safe_head):
+        safe_head.return_value = MagicMock(
+            status_code=200, headers={"Content-Type": "text/turtle"}
+        )
+
+        response = self.client.get(
+            "/ontologysuggestion/purl_is_valid/",
+            {"purl": "https://example.org/ontology.ttl"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["_result"], {"valid": True})
+        safe_head.assert_called_once_with("https://example.org/ontology.ttl")
+
+    @patch("ontology_suggestion.views.safe_head")
+    def test_invalid_purls_are_rejected(self, safe_head):
+        safe_head.side_effect = SafeRequestError("URL could not be fetched")
+
+        for purl in (
+            "http://example.org/ontology.ttl",
+            "https://127.0.0.1/ontology.ttl",
+            "https://[::1]/ontology.ttl",
+            "not-a-url",
+        ):
+            with self.subTest(purl=purl):
+                response = self.client.get(
+                    "/ontologysuggestion/purl_is_valid/", {"purl": purl}
+                )
+
+                self.assertEqual(
+                    response.json()["_result"],
+                    {
+                        "valid": False,
+                        "reason": "PURL is not a resolvable URL",
+                    },
+                )
+
+    @patch("ontology_suggestion.views.safe_head")
+    def test_purl_with_invalid_status_or_content_type_is_rejected(self, safe_head):
+        for result in (
+            MagicMock(status_code=404, headers={"Content-Type": "text/turtle"}),
+            MagicMock(
+                status_code=200, headers={"Content-Type": "application/pdf"}
+            ),
+        ):
+            safe_head.return_value = result
+            response = self.client.get(
+                "/ontologysuggestion/purl_is_valid/",
+                {"purl": "https://example.org/ontology.owl"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json()["_result"]["valid"])
