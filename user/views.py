@@ -15,7 +15,13 @@ from user_service.middlewares.request import (
 )
 from user_service.middlewares.client_id import get_client_id_from_request
 from user.libs.auth import Auth
-from user.models import OAuthLoginTransaction, UserModel, RoleModel, SearchSettingModel
+from user.models import (
+    MAX_API_KEY_OWNER_DEPTH,
+    OAuthLoginTransaction,
+    UserModel,
+    RoleModel,
+    SearchSettingModel,
+)
 from django.http import Http404, HttpResponseServerError
 from django.views import View
 import json
@@ -24,7 +30,7 @@ import datetime
 from http.cookies import Morsel
 from urllib.parse import urlparse
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import BadRequest, PermissionDenied
 from django.http import JsonResponse
 from user_service.libs.utils import make_hash
 from django.db import transaction
@@ -242,6 +248,8 @@ def create_api_key(request):
     payload = json.loads(request.body)
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
+    if user.get_api_key_owner_depth() >= MAX_API_KEY_OWNER_DEPTH:
+        raise BadRequest("Maximum API key ownership depth reached")
     token = secrets.token_hex(32)
     token = "apk_" + user.client_ts + "_" + token
     api_key_user = {

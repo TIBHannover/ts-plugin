@@ -185,6 +185,32 @@ class TestNoteAccess(BaseTest):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_owner_can_access_private_note_created_by_api_key(self):
+        api_key_user = TestHelper.createApiKeyUser(
+            self.gitHubUser, "API user", "", "API key"
+        )
+        note = TestHelper.createNote(api_key_user, "me")
+        params = {"ontology": self.test_ontology_id}
+
+        response = self.client.get(
+            "/note/get/" + str(note.id) + "/",
+            headers=self.github_request_headers,
+            data=params,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["_result"]["note"]["can_edit"])
+
+        list_response = self.client.get(
+            "/note/list/", headers=self.github_request_headers, data=params
+        )
+        listed_note = next(
+            item
+            for item in list_response.json()["_result"]["notes"]
+            if item["id"] == note.id
+        )
+        self.assertTrue(listed_note["can_edit"])
+
     def test_note_list_filtering_based_on_artifact_type(self):
         params = {"ontology": self.test_ontology_id, "artifact_type": "class"}
         note_list_url = "/note/list/"

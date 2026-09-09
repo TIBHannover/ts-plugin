@@ -87,7 +87,7 @@ def get_username_from_request():
     api_key = get_api_key_from_request()
     if api_key:
         # this is an api call
-        user = UserModel.objects.filter(api_key=make_hash(api_key)).first()
+        user = get_valid_api_key_user_from_request()
         if user:
             return user.username
         else:
@@ -99,6 +99,17 @@ def get_username_from_request():
         return payload.get("ts_username", "")
     except:
         return ""
+
+
+def get_valid_api_key_user_from_request():
+    request = getattr(_current_context, "request", None)
+    if not request:
+        return None
+    if not hasattr(request, "_valid_api_key_user"):
+        request._valid_api_key_user = UserModel.get_valid_api_key_user(
+            make_hash(get_api_key_from_request())
+        )
+    return request._valid_api_key_user
 
 
 def is_csrf_valid():

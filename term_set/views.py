@@ -36,6 +36,18 @@ from term_set.docs import (
 )
 
 
+def term_set_to_dict(term_set, user_id, owned_identity_ids=None):
+    result = term_set.to_dict()
+    if user_id:
+        owned_identity_ids = owned_identity_ids or UserModel.get_owned_identity_ids(
+            user_id
+        )
+        result["can_edit"] = term_set.creator_id in owned_identity_ids
+    else:
+        result["can_edit"] = False
+    return result
+
+
 @require_http_methods(["GET"])
 def ping(request):
     return create_json_response({"response": "Pong"})
@@ -96,7 +108,7 @@ def create(request):
     except IntegrityError:
         return HttpResponseServerError("data could not be saved.")
 
-    return create_json_response({"term_set": term_set.to_dict()})
+    return create_json_response({"term_set": term_set_to_dict(term_set, user.id)})
 
 
 @swagger_auto_schema(
@@ -128,6 +140,7 @@ def get(request, id=None):
     if not id:
         # list of term sets
         term_sets = []
+        owned_identity_ids = set()
         if not user_id:
             # guest user. show only public term sets
             term_sets = TermSetModel.objects.filter(
@@ -135,14 +148,20 @@ def get(request, id=None):
                 creator__client_ts=client_id,
             ).all()
         else:
+            owned_identity_ids = UserModel.get_owned_identity_ids(user_id)
             term_sets = TermSetModel.objects.filter(
                 (Q(visibility="internal") & Q(creator__client_ts=client_id))
                 | (Q(visibility="public") & Q(creator__client_ts=client_id))
-                | (Q(visibility="me") & Q(creator=user))
+                | (Q(visibility="me") & Q(creator_id__in=owned_identity_ids))
             )
 
         return create_json_response(
-            {"term_sets": [term_set.to_dict() for term_set in term_sets]}
+            {
+                "term_sets": [
+                    term_set_to_dict(term_set, user_id, owned_identity_ids)
+                    for term_set in term_sets
+                ]
+            }
         )
 
     if not is_valid_uuid(id):
@@ -151,7 +170,7 @@ def get(request, id=None):
     if not term_set or not term_set.can_visit(user_id=user_id):
         raise Http404("Term set does not exist")
 
-    return create_json_response({"term_set": term_set.to_dict()})
+    return create_json_response({"term_set": term_set_to_dict(term_set, user_id)})
 
 
 @swagger_auto_schema(
@@ -211,7 +230,7 @@ def update(request, id):
     except IntegrityError:
         return HttpResponseServerError("data could not be updated.")
 
-    return create_json_response({"term_set": term_set.to_dict()})
+    return create_json_response({"term_set": term_set_to_dict(term_set, user.id)})
 
 
 @swagger_auto_schema(
