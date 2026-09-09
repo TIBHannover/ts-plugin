@@ -83,6 +83,7 @@ LOGGING = {
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
+    "172.18.32.1", # for windows wsl
     "localhost",
     ".service.tib.eu",
     ".terminology.nfdi4chem.de",
@@ -110,6 +111,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://localhost",
     "http://127.0.0.1:3000",
+    "http://172.18.32.1:3000", # for windows wsl
     "https://ols02.develop.service.tib.eu",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
@@ -121,6 +123,7 @@ CORS_ALLOWED_ORIGINS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://service.tib.eu",
     "http://localhost:3000",
+    "http://172.18.32.1:3000", # for windows wsl
     "http://localhost",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",

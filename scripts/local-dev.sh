@@ -8,8 +8,8 @@ PYTHON="${PYTHON:-python}"
 PORT="${PORT:-8000}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
-export DB_NAME="${DB_NAME:-ts_plugin}"
-export DB_USER="${DB_USER:-postgres}"
+export DB_NAME="${DB_NAME:-ts_db}"
+export DB_USER="${DB_USER:-ts}"
 export DB_PASSWORD="${DB_PASSWORD:-1234}"
 export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
@@ -60,15 +60,15 @@ start_redis() {
     return
   fi
 
-  require_cmd redis-server
-  redis-server --port "$REDIS_PORT" --save "" --appendonly no &
-  pids+=("$!")
+  # require_cmd redis-server
+  # redis-server --port "$REDIS_PORT" --save "" --appendonly no &
+  # pids+=("$!")
 
-  require_cmd redis-cli
-  until redis-cli -p "$REDIS_PORT" ping >/dev/null 2>&1; do
-    echo "Waiting for Redis on port ${REDIS_PORT}..."
-    sleep 1
-  done
+  # require_cmd redis-cli
+  # until redis-cli -p "$REDIS_PORT" ping >/dev/null 2>&1; do
+  #   echo "Waiting for Redis on port ${REDIS_PORT}..."
+  #   sleep 1
+  # done
 }
 
 require_cmd "$PYTHON"
@@ -80,7 +80,9 @@ start_redis
 "$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" &
 pids+=("$!")
 
-"$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &
+# "$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &
+# pids+=("$!")
+"$PYTHON" -m celery -A user_service worker --loglevel=error --pool=solo &
 pids+=("$!")
 
 echo "Django is running at http://localhost:${PORT}"
