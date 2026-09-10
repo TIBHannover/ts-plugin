@@ -1,11 +1,13 @@
 import requests
 from typing import Any
 import urllib
+from ai_assist.utils import convert_to_str, get_parent_from_term
+from ai_assist.models import Ontology
 
 TS_BASE_URL = "https://api.terminology.tib.eu/api/v2/"
 TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
 
-DEFNITION_MAX_LENGTH = 100
+DEFNITION_MAX_LENGTH = 300
 REQUEST_TIMEOUT = (3.05, 10)
 
 
@@ -13,12 +15,16 @@ def search(
     query: str,
     ontologyId: str = "",
     excludedCandidates: list[dict[str, str]] | None = None,
-) -> list[dict[str, Any]]:
+    page = 0,
+    size = 20
+) -> list[dict[str, Any]] | str:
     try:
+        if size > 20:
+            return "Error: size must be less than 20"
         params = {
             "search": query,
-            "page": 0,
-            "size": 20,
+            "page": page,
+            "size": size,
             "lang": "en",
             "exclusive": "true",
             "facetFields": "type ontologyId",
@@ -42,7 +48,7 @@ def search(
         for r in resp:
             if (r["ontologyId"].casefold(), r["iri"]) in excluded:
                 continue
-            definition = r.get("definition", "")
+            definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
                     "label": r["label"],
@@ -53,7 +59,7 @@ def search(
                         else ""
                     ),
                     "ontologyId": r["ontologyId"],
-                    "parent_iri": r.get("directParent", ""),
+                    "parent": get_parent_from_term(r),
                     "synonym": r.get("synonym", []),
                 }
             )
@@ -62,8 +68,10 @@ def search(
         return f"Error: no results found: {e}"
 
 
-def search_under_term(query: str, iri: str):
+def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
     try:
+        if size > 20:
+            return "Error: size has to be less than 20"
         resp = requests.get(
             f"{TS_BASE_URL_V1}search",
             params={
@@ -76,8 +84,8 @@ def search_under_term(query: str, iri: str):
                 "obsoletes": "false",
                 "local": "false",
                 "allChildrenOf": iri,
-                "rows": 20,
-                "start": 0,
+                "rows":size,
+                "start": page,
                 "format": "json",
             },
             timeout=REQUEST_TIMEOUT,
@@ -109,11 +117,12 @@ def get_term_detail(iri: str, ontologyId: str):
             timeout=REQUEST_TIMEOUT,
         )
         resp = resp.json()
+        definition = convert_to_str(resp.get("definition", ""))
         return {
             "label": resp["label"],
-            "definition": resp.get("definition", ""),
+            "definition": definition[:DEFNITION_MAX_LENGTH],
             "ontologyId": resp["ontologyId"],
-            "parent_iri": resp.get("directParent", ""),
+            "parent": get_parent_from_term(resp),
             "synonym": resp.get("synonym", []),
         }
     except:
@@ -130,7 +139,7 @@ def get_term_children(iri: str, ontologyId: str):
         resp = resp.json()
         res = []
         for r in resp["elements"][:10]:
-            definition = r.get("definition", "")
+            definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
                     "label": r["label"],
@@ -150,20 +159,10 @@ def get_term_children(iri: str, ontologyId: str):
 
 def get_ontology_detail(ontologyId: str):
     try:
-        resp = requests.get(
-            f"{TS_BASE_URL}ontologies/{ontologyId}?lang=en",
-            timeout=REQUEST_TIMEOUT,
-        )
-        resp = resp.json()
-        definition = resp.get("definition", "")
-        return {
-            "label": resp["label"],
-            "definition": (
-                definition[:DEFNITION_MAX_LENGTH]
-                if isinstance(definition, str)
-                else ""
-            ),
-        }
+        onto = Ontology.objects.filter(ontologyId=ontologyId).first()
+        if not onto:
+           return f"Error: no ontology found for {ontologyId}"
+        return onto.to_dict()
     except:
         return f"Error: no ontology found for {ontologyId}"
 
@@ -173,12 +172,24 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search",
-            "description": "search in a terminology database for a given query",
+            "description": "Search for terms. Results include a parent object whose label may be a string or list and whose IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
                     "ontologyId": {"type": "string"},
+                    "page": {
+                        "type": "integer",
+                        "description": "Zero-based result-page number.",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                    "size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 20,
+                    },
                 },
                 "required": ["query"],
             },
@@ -188,7 +199,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_ontology_detail",
-            "description": "get ontology detail",
+            "description": "Get cached ontology metadata: ontologyId, repo_url, definition, subjects, collection, importsFrom, exportsTo, label, and lang. The loaded timestamp is not returned.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -202,7 +213,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_term_detail",
-            "description": "get term detail",
+            "description": "Get term details, including a parent object whose label may be a string or list and whose IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -232,12 +243,24 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_under_term",
-            "description": "search under a term in a tree structure.",
+            "description": "Search within a term subtree. The page argument is the zero-based result offset.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
                     "iri": {"type": "string"},
+                    "page": {
+                        "type": "integer",
+                        "description": "Zero-based result offset.",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                    "size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 20,
+                    },
                 },
                 "required": ["query", "iri"],
             },

@@ -20,7 +20,7 @@ Output:
     - Do not include any other text.
 
 - functions you can call are:
-    - search(query, ontologyId): search for existing terms. It returns dictionaries containing label, iri, definition, ontologyId, parent_iri, and synonym.
+    - search(query, ontologyId, page, size): search for existing terms. ontologyId is optional; page is a zero-based result-page number and defaults to 0. size defaults to 20 with a maximum of 20. It returns dictionaries containing label, iri, definition, ontologyId, parent ({"label": string or list, "iri": string}), and synonym.
 """
 
 
@@ -60,11 +60,11 @@ Output:
     - Otherwise, return only a JSON object like {'candidates': [{'parent_label': '', 'ontology': '', 'parent_iri': ''}, {'parent_label': '', 'ontology': '', 'parent_iri': ''}, {'parent_label': '', 'ontology': '', 'parent_iri': ''}]}. Return exactly three distinct candidates. A candidate is identified by its ontology and parent_iri, so the same parent_iri may be used in different ontologies. Do not include text.
 
 - functions you can call are: 
-    - Search(query, ontologyId): look for a term based on keyword. You can narrow it down to one ontology by providing an ontology id. It returns a list of dictionaries each have: label, iri, definition, ontologyId, parent_iri, synonym
-    - search_under_term(query, iri): narows down a search in to the sub tree of a term. It returns a list of dictionaries each have: label, ontologyId, iri
-    - get_ontology_detail: get ontology detail. It get the ontologyId. It returns a dictionary with label and definition
-    - get_term_detail: get term detail. It gets the term iri and ontologyId. It returns a dictionary with label, definition, ontologyId, parent_iri, synonym
-    - get_term_children: get a list of term children. It gets the term iri and ontologyId. It returns a list of dictionaries each have: label, definition, ontologyId, parent_iri, synonym
+    - search(query, ontologyId, page, size): look for a term based on a keyword. ontologyId is optional; page is a zero-based result-page number and defaults to 0. size defaults to 20 with a maximum of 20. It returns dictionaries with label, iri, definition, ontologyId, parent ({"label": string or list, "iri": string}), and synonym.
+    - search_under_term(query, iri, page, size): narrow a search to a term subtree. Despite its name, page is a zero-based result offset; it defaults to 0. size defaults to 20 with a maximum of 20. It returns dictionaries with label, ontologyId, and iri.
+    - get_ontology_detail(ontologyId): get cached ontology metadata. It returns ontologyId, repo_url, definition, subjects, collection, importsFrom, exportsTo, label, and lang. It does not return loaded.
+    - get_term_detail(iri, ontologyId): get term details. It returns label, definition, ontologyId, parent ({"label": string or list, "iri": string}), and synonym.
+    - get_term_children(iri, ontologyId): get child terms. It returns dictionaries with label, definition, ontologyId, and synonym.
 """
 
 # Backward-compatible prompt names for existing imports.

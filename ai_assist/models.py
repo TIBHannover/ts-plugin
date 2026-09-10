@@ -21,14 +21,13 @@ class Ontology(models.Model):
         return {
             "ontologyId": self.ontologyId,
             "repo_url": self.repo_url,
-            "definition": self.definition,
+            "definition": self.definition[:300],
             "subjects": self.subjects,
             "collection": self.collection,
             "importsFrom": self.importsFrom,
             "exportsTo": self.exportsTo,
             "label": self.label,
             "lang": self.lang,
-            "loaded": self.loaded,
         }
 
     def __str__(self):

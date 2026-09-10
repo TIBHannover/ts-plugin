@@ -4,6 +4,7 @@ import requests
 from django.utils import timezone
 
 from ai_assist.models import Ontology
+from ai_assist.utils import convert_to_str
 
 ONTOLOGIES_URL = "https://api.terminology.tib.eu/api/v2/ontologies?size=1000"
 logger = logging.getLogger(__name__)
@@ -32,13 +33,6 @@ def harvest_ontologies():
             continue
         Ontology.objects.update_or_create(ontologyId=ontology_id, defaults=defaults)
 
-
-def convert_to_str(value):
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return ". ".join(str(item) for item in value)
-    return ""
 
 
 def to_string_list(value):
