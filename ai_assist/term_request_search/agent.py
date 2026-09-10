@@ -3,17 +3,14 @@ import json
 import os
 from typing import Any
 
-from ai_assist.functions import (
-    search,
-    search_under_term,
-    get_term_detail,
-    get_term_children,
-    get_ontology_detail,
-    TOOLS,
-)
 from openai import OpenAI
 
-from ai_assist.vars import MAX_INITIAL_SEARCH_CALLS
+from .functions import (
+    TERM_REQUEST_SEARCH_FUNCTIONS,
+    TERM_REQUEST_SEARCH_TOOLS,
+    get_term_detail,
+)
+from .state import TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -22,14 +19,6 @@ client = OpenAI(
 MODEL = os.environ["LLM_MODEL"]
 MAX_TERM_REQUEST_CLARIFICATIONS = 2
 
-
-FUNCTIONS = {
-    "search": search,
-    "get_term_detail": get_term_detail,
-    "get_term_children": get_term_children,
-    "get_ontology_detail": get_ontology_detail,
-    "search_under_term": search_under_term,
-}
 
 FUNCTION_LABELS = {
     "search": "Searching terminology",
@@ -75,7 +64,7 @@ def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
     return f'{FUNCTION_LABELS[fn_name]} for "{args.get("iri", "")}"'
 
 
-def build_user_prompt(
+def build_term_request_agent_input(
     label: str, definition: str, category: str, domain: str = ""
 ) -> str:
     return (
@@ -86,11 +75,11 @@ def build_user_prompt(
     )
 
 
-def build_search_prompt(description: str) -> str:
+def build_search_agent_input(description: str) -> str:
     return f"Search text: {description}"
 
 
-def validate_search_response(
+def validate_search_agent_response(
     content: str, search_results: list[dict[str, Any]]
 ) -> tuple[bool, str, str]:
     try:
@@ -140,7 +129,7 @@ def validate_search_response(
     return True, json.dumps(response), ""
 
 
-def validate_final_response(content: str) -> tuple[bool, str, str]:
+def validate_term_request_agent_response(content: str) -> tuple[bool, str, str]:
     try:
         response = json.loads(content)
     except json.JSONDecodeError:
@@ -215,20 +204,20 @@ def validate_final_response(content: str) -> tuple[bool, str, str]:
     return True, json.dumps(response), ""
 
 
-def run_agent(messages, response):
+def run_term_request_or_search_agent_turn(messages, response):
     response["progress_feedback"] = ""
 
     # remove the search tool after a certain number of calls to force the agent to avoid broad searches
     available_tools = [
         tool
-        for tool in TOOLS
+        for tool in TERM_REQUEST_SEARCH_TOOLS
         if (
             response.get("phase") != "search"
             or tool["function"]["name"] == "search"
         )
         and (
             response.get("phase") == "search"
-            or response["search_call_count"] < MAX_INITIAL_SEARCH_CALLS
+            or response["search_call_count"] < TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
             or tool["function"]["name"] != "search"
         )
     ]
@@ -286,11 +275,13 @@ def run_agent(messages, response):
             return
 
         if response.get("phase") == "search":
-            is_valid, final_response, feedback = validate_search_response(
+            is_valid, final_response, feedback = validate_search_agent_response(
                 content, response["search_results"]
             )
         else:
-            is_valid, final_response, feedback = validate_final_response(content)
+            is_valid, final_response, feedback = validate_term_request_agent_response(
+                content
+            )
         if is_valid:
             temp = json.loads(final_response)
             response["candidates"] = temp["candidates"]
@@ -317,14 +308,15 @@ def run_agent(messages, response):
 
         if not isinstance(args, dict):
             result = {"error": "Function arguments must be a JSON object."}
-        elif fn_name not in FUNCTIONS:
+        elif fn_name not in TERM_REQUEST_SEARCH_FUNCTIONS:
             result = {"error": f"Unknown function: {fn_name}"}
         else:
             if fn_name == "search":
                 response["search_call_count"] += 1
             if (
                 response.get("phase") != "search"
-                and response["search_call_count"] > MAX_INITIAL_SEARCH_CALLS
+                and response["search_call_count"]
+                > TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
             ):
                 result = {
                     "error": "Too many search calls. Use search_under_term instead."
@@ -337,7 +329,7 @@ def run_agent(messages, response):
                         args["excludedCandidates"] = response[
                             "excluded_search_candidates"
                         ]
-                    result = FUNCTIONS[fn_name](**args)
+                    result = TERM_REQUEST_SEARCH_FUNCTIONS[fn_name](**args)
                     if response.get("phase") == "search" and isinstance(result, list):
                         response["successful_search_count"] += 1
                         result = result[:5]

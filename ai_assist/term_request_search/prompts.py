@@ -1,4 +1,7 @@
-SEARCH_PROMPT = """
+"""Prompt templates for the term-request/search assistant."""
+
+
+SEARCH_AGENT_PROMPT = """
 
 Persona and Goal:
 
@@ -21,7 +24,7 @@ Output:
 """
 
 
-TERM_REQUEST_PROMPT = """
+TERM_REQUEST_AGENT_PROMPT = """
 
 Persona and Goal:
 
@@ -64,5 +67,7 @@ Output:
     - get_term_children: get a list of term children. It gets the term iri and ontologyId. It returns a list of dictionaries each have: label, definition, ontologyId, parent_iri, synonym
 """
 
-# Kept for callers that import the original prompt name.
-PROMPT = TERM_REQUEST_PROMPT
+# Backward-compatible prompt names for existing imports.
+SEARCH_PROMPT = SEARCH_AGENT_PROMPT
+TERM_REQUEST_PROMPT = TERM_REQUEST_AGENT_PROMPT
+PROMPT = TERM_REQUEST_AGENT_PROMPT
