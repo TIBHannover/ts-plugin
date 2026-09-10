@@ -1,9 +1,15 @@
 from celery import shared_task
 
+from .ontology_harvester import harvest_ontologies
 from .term_request_search.runner import (
     resume_term_request_search_agent,
     run_term_request_search_agent,
 )
+
+
+@shared_task
+def harvest_ontologies_task():
+    return harvest_ontologies()
 
 
 @shared_task

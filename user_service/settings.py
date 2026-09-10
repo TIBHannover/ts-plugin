@@ -1,5 +1,6 @@
 from pathlib import Path
 import environ
+from celery.schedules import crontab
 
 # import logging
 import os
@@ -285,6 +286,12 @@ CHANNEL_LAYERS = {
 }
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
+CELERY_BEAT_SCHEDULE = {
+    "harvest-ontologies-daily": {
+        "task": "ai_assist.tasks.harvest_ontologies_task",
+        "schedule": crontab(hour=0, minute=0),
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
