@@ -25,6 +25,8 @@ FUNCTION_LABELS = {
     "search_under_term": "Searching related terms",
     "get_term_detail": "Checking term details",
     "get_term_children": "Checking child terms",
+    "get_roots": "Checking root terms",
+    "get_individuals": "Checking individuals",
     "get_ontology_detail": "Checking ontology details",
 }
 
@@ -59,7 +61,7 @@ def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
         ontology = args.get("ontologyId")
         suffix = f" in {ontology}" if ontology else ""
         return f'{FUNCTION_LABELS[fn_name]} for "{args.get("query", "")}"{suffix}'
-    if fn_name == "get_ontology_detail":
+    if fn_name in ("get_ontology_detail", "get_roots", "get_individuals"):
         return f'{FUNCTION_LABELS[fn_name]} for "{args.get("ontologyId", "")}"'
     return f'{FUNCTION_LABELS[fn_name]} for "{args.get("iri", "")}"'
 

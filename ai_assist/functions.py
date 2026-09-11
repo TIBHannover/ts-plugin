@@ -1,7 +1,7 @@
 import requests
 from typing import Any
 import urllib
-from ai_assist.utils import convert_to_str, get_parent_from_term
+from ai_assist.utils import convert_to_str, get_parent_from_term, get_term_type
 from ai_assist.models import Ontology
 
 TS_BASE_URL = "https://api.terminology.tib.eu/api/v2/"
@@ -19,8 +19,10 @@ def search(
     size = 20
 ) -> list[dict[str, Any]] | str:
     try:
-        if size > 20:
-            return "Error: size must be less than 20"
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            return "Error: page must be a non-negative integer"
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1 or size > 20:
+            return "Error: size must be an integer between 1 and 20"
         params = {
             "search": query,
             "page": page,
@@ -28,7 +30,6 @@ def search(
             "lang": "en",
             "exclusive": "true",
             "facetFields": "type ontologyId",
-            "type": "class",
         }
         if ontologyId:
             onto_details = get_ontology_detail(ontologyId)
@@ -61,6 +62,7 @@ def search(
                     "ontologyId": r["ontologyId"],
                     "parent": get_parent_from_term(r),
                     "synonym": r.get("synonym", []),
+                    "type": get_term_type(r)
                 }
             )
         return res
@@ -70,16 +72,16 @@ def search(
 
 def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
     try:
-        if size > 20:
-            return "Error: size has to be less than 20"
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            return "Error: page must be a non-negative integer"
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1 or size > 20:
+            return "Error: size must be an integer between 1 and 20"
         resp = requests.get(
             f"{TS_BASE_URL_V1}search",
             params={
                 "q": query,
                 "exclusive": "false",
                 "option": "LINEAR",
-                "fieldList": "iri,label,short_form,obo_id,ontology_name",
-                "queryFields": "iri,label,short_form,ontology_name",
                 "exact": "false",
                 "obsoletes": "false",
                 "local": "false",
@@ -95,12 +97,19 @@ def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
         if not resp:
             return f"Error: no results found for {iri}"
         res = []
-        for r in resp[:5]:
+        for r in resp:
+            definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
                     "label": r["label"],
                     "ontologyId": r["ontology_name"],
                     "iri": r["iri"],
+                    "type": r["type"],
+                    "definition": (
+                            definition[:DEFNITION_MAX_LENGTH]
+                            if isinstance(definition, str)
+                            else ""
+                        ),
                 }
             )
         return res
@@ -124,25 +133,34 @@ def get_term_detail(iri: str, ontologyId: str):
             "ontologyId": resp["ontologyId"],
             "parent": get_parent_from_term(resp),
             "synonym": resp.get("synonym", []),
+            "type": get_term_type(resp)
         }
     except:
         return f"Error: no results found for {iri}"
 
 
-def get_term_children(iri: str, ontologyId: str):
+def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
     try:
+        if term_type != "class" and term_type != "property":
+            return "Errro: type of a term has to be either class or property."
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            return "Error: page must be a non-negative integer"
+
+        range_length  = 10
         iri = urllib.parse.quote(iri, safe="")
-        resp = requests.get(
-            f"{TS_BASE_URL}ontologies/{ontologyId}/classes/{urllib.parse.quote(iri, safe='')}/hierarchicalChildren?size=1000&lang=en&includeObsoleteEntities=false",
-            timeout=REQUEST_TIMEOUT,
-        )
+        base_url = f"{TS_BASE_URL}ontologies/{ontologyId}/classes/{urllib.parse.quote(iri, safe='')}/hierarchicalChildren?page={page}&size={range_length}&lang=en&includeObsoleteEntities=false"
+        if term_type == "property":
+            base_url = f"{TS_BASE_URL}ontologies/{ontologyId}/properties/{urllib.parse.quote(iri, safe='')}/hierarchicalChildren?page={page}&size={range_length}&lang=en&includeObsoleteEntities=false"
+
+        resp = requests.get(base_url, timeout=REQUEST_TIMEOUT,)
         resp = resp.json()
         res = []
-        for r in resp["elements"][:10]:
+        for r in resp["elements"]:
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
                     "label": r["label"],
+                    "iri": r["iri"],
                     "definition": (
                         definition[:DEFNITION_MAX_LENGTH]
                         if isinstance(definition, str)
@@ -150,11 +168,92 @@ def get_term_children(iri: str, ontologyId: str):
                     ),
                     "ontologyId": r["ontologyId"],
                     "synonym": r.get("synonym", []),
+                    "type": get_term_type(r)
                 }
             )
         return res
     except:
         return f"Error: no children found for {iri}"
+
+
+def get_roots(ontologyId: str, type: str, page: int = 0):
+    try:
+        if type != "class" and type != "property":
+            return "Error: type has to be either class or property."
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            return "Error: page must be a non-negative integer"
+
+        entity_type = "classes" if type == "class" else "properties"
+        resp = requests.get(
+            f"{TS_BASE_URL}ontologies/{ontologyId}/{entity_type}",
+            params={
+                "hasDirectParents": "false",
+                "page": page,
+                "size": 20,
+                "lang": "en",
+                "includeObsoleteEntities": "false",
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp = resp.json()
+        res = []
+        for r in resp["elements"]:
+            definition = convert_to_str(r.get("definition", ""))
+            res.append(
+                {
+                    "label": r["label"],
+                    "iri": r["iri"],
+                    "definition": (
+                        definition[:DEFNITION_MAX_LENGTH]
+                        if isinstance(definition, str)
+                        else ""
+                    ),
+                    "ontologyId": r["ontologyId"],
+                    "synonym": r.get("synonym", []),
+                    "type": get_term_type(r),
+                }
+            )
+        return res
+    except:
+        return f"Error: no roots found for {ontologyId}"
+
+
+def get_individuals(ontologyId: str, page: int = 0):
+    try:
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            return "Error: page must be a non-negative integer"
+
+        resp = requests.get(
+            f"{TS_BASE_URL}ontologies/{ontologyId}/individuals",
+            params={
+                "lang": "en",
+                "page": page,
+                "size": 20,
+                "includeObsoleteEntities": "false",
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp = resp.json()
+        res = []
+        for r in resp["elements"]:
+            definition = convert_to_str(r.get("definition", ""))
+            res.append(
+                {
+                    "label": r["label"],
+                    "iri": r["iri"],
+                    "definition": (
+                        definition[:DEFNITION_MAX_LENGTH]
+                        if isinstance(definition, str)
+                        else ""
+                    ),
+                    "ontologyId": r["ontologyId"],
+                    "synonym": r.get("synonym", []),
+                    "type": get_term_type(r),
+                }
+            )
+        return res
+    except:
+        return f"Error: no individuals found for {ontologyId}"
 
 
 def get_ontology_detail(ontologyId: str):
@@ -172,7 +271,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search",
-            "description": "Search for terms. Results include a parent object whose label may be a string or list and whose IRI is a string.",
+            "description": "Search for terms. Results include label, IRI, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -213,7 +312,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_term_detail",
-            "description": "Get term details, including a parent object whose label may be a string or list and whose IRI is a string.",
+            "description": "Get term details, including label, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -228,14 +327,70 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_term_children",
-            "description": "get term children",
+            "description": "Get one page of direct child terms for a class or property. Each page contains at most 10 children, so increment page when more results may be needed. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "iri": {"type": "string"},
                     "ontologyId": {"type": "string"},
+                    "term_type": {
+                        "type": "string",
+                        "enum": ["class", "property"],
+                        "description": "Type of the parent term, as returned by another term tool.",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Zero-based page number. Page size is fixed at 10 results.",
+                        "minimum": 0,
+                        "default": 0,
+                    },
                 },
-                "required": ["iri", "ontologyId"],
+                "required": ["iri", "ontologyId", "term_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_roots",
+            "description": "Get one page of root classes or properties for an ontology. Each page contains at most 20 roots, so increment page when more results may be needed. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ontologyId": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": ["class", "property"],
+                        "description": "Type of root terms to retrieve.",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Zero-based page number. Page size is fixed at 20 results.",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                },
+                "required": ["ontologyId", "type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_individuals",
+            "description": "Get one page of individuals for an ontology. Each page contains at most 20 individuals, so increment page when more results may be needed. Results include label, IRI, definition, ontology ID, synonyms, and the individual term type.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ontologyId": {"type": "string"},
+                    "page": {
+                        "type": "integer",
+                        "description": "Zero-based page number. Page size is fixed at 20 results.",
+                        "minimum": 0,
+                        "default": 0,
+                    },
+                },
+                "required": ["ontologyId"],
             },
         },
     },
@@ -243,7 +398,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_under_term",
-            "description": "Search within a term subtree. The page argument is the zero-based result offset.",
+            "description": "Search within a term subtree. Results include label, ontology ID, IRI, term type, and definition. The page argument is the zero-based result offset.",
             "parameters": {
                 "type": "object",
                 "properties": {
