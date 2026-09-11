@@ -6,9 +6,11 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from user_service.libs.decorators import authentication_required
+from user_service.middlewares.request import get_username_from_request
 
 from .agent import build_search_agent_input, build_term_request_agent_input
 from ai_assist.redis_client import redis_client
+from ai_assist.session_logging import create_session_for_user
 from ai_assist.tasks import run_agent_task
 from ai_assist.transport import (
     RUN_REDIS_KEY_CANCEL,
@@ -111,6 +113,10 @@ def start_workflow(request, workflow, include_workflow=True):
     except Exception:
         rollback_run_start(run_id)
         return JsonResponse({"error": "Unable to start the assistant."}, status=503)
+
+    create_session_for_user(
+        run_id, get_username_from_request(), workflow, payload
+    )
 
     return JsonResponse(
         {

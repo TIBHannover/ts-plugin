@@ -5,6 +5,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from ai_assist.session_logging import record_model_output
 from .functions import (
     TERM_REQUEST_SEARCH_FUNCTIONS,
     TERM_REQUEST_SEARCH_TOOLS,
@@ -206,7 +207,7 @@ def validate_term_request_agent_response(content: str) -> tuple[bool, str, str]:
     return True, json.dumps(response), ""
 
 
-def run_term_request_or_search_agent_turn(messages, response):
+def run_term_request_or_search_agent_turn(messages, response, run_id=None):
     response["progress_feedback"] = ""
 
     # remove the search tool after a certain number of calls to force the agent to avoid broad searches
@@ -228,6 +229,8 @@ def run_term_request_or_search_agent_turn(messages, response):
     response["usage_stats"]["completion_tokens"] += usage.get("completion_tokens", 0)
     response["usage_stats"]["total_tokens"] += usage.get("total_tokens", 0)
     messages.append(message)
+    if run_id:
+        record_model_output(run_id, message, usage)
 
     tool_calls = message.get("tool_calls") or []
     if not tool_calls:

@@ -144,7 +144,7 @@ def run_conversation(run_id, state):
                 return
 
             add_pending_user_input(messages, run_id)
-            run_term_request_or_search_agent_turn(messages, response)
+            run_term_request_or_search_agent_turn(messages, response, run_id)
             state["steps"] = step + 1
 
             if response["needs_user_input"]:

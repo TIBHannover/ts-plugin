@@ -13,6 +13,7 @@ export DB_USER="${DB_USER:-ts}"
 export DB_PASSWORD="${DB_PASSWORD:-1234}"
 export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
+export DEBUG_MODE="${DEBUG_MODE:-True}"
 export CELERY_BROKER_URL="${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT}/0}"
 export CELERY_RESULT_BACKEND="${CELERY_RESULT_BACKEND:-redis://localhost:${REDIS_PORT}/0}"
 

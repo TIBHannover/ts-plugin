@@ -3,6 +3,7 @@ from celery import current_app
 from django.conf import settings
 
 from ai_assist.redis_client import redis_client
+from ai_assist.session_logging import record_user_input
 from ai_assist.transport import (
     CHANNEL_EVENT_TYPE_AGENT_EVENT,
     REDIS_TRUE_VALUE,
@@ -159,6 +160,7 @@ class TermRequestSearchMessageHandler:
         )
         if not resuming:
             return
+        await sync_to_async(record_user_input)(self.consumer.run_id, user_message)
         if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
             message.set_message(
                 f"The user rejected these recommendations because: {user_message}. "

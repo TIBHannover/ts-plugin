@@ -49,4 +49,7 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(
+        settings.STATIC_URL.removeprefix(settings.FORCE_SCRIPT_NAME or ""),
+        document_root=settings.STATIC_ROOT,
+    )
