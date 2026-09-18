@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import requests
 from typing import Any
 import urllib
@@ -70,6 +72,34 @@ def search(
         return f"Error: no results found: {e}"
 
 
+def batch_search(
+    query: list[str],
+    ontologyId: str = "",
+    excludeCandidates: list[dict[str, str]] | None = None,
+) -> dict[str, list[dict[str, Any]]] | str:
+    if (
+        not isinstance(query, list)
+        or not 1 <= len(query) <= 5
+        or not all(isinstance(value, str) for value in query)
+        or len(set(query)) != len(query)
+    ):
+        return "Error: query must be a list of 1 to 5 unique strings"
+
+    with ThreadPoolExecutor(max_workers=len(query)) as executor:
+        results = executor.map(
+            partial(
+                search,
+                ontologyId=ontologyId,
+                excludedCandidates=excludeCandidates,
+            ),
+            query,
+        )
+    return {
+        target: result if isinstance(result, list) else []
+        for target, result in zip(query, results)
+    }
+
+
 def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
     try:
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -129,6 +159,7 @@ def get_term_detail(iri: str, ontologyId: str):
         definition = convert_to_str(resp.get("definition", ""))
         return {
             "label": resp["label"],
+            "iri": resp["iri"],
             "definition": definition[:DEFNITION_MAX_LENGTH],
             "ontologyId": resp["ontologyId"],
             "parent": get_parent_from_term(resp),
@@ -266,28 +297,48 @@ def get_ontology_detail(ontologyId: str):
         return f"Error: no ontology found for {ontologyId}"
 
 
+def ontologies_list(
+    collection: str = "", subject: str = "", hosted_on_github: bool = True
+):
+    ontologies = Ontology.objects.all()
+    if hosted_on_github:
+        ontologies = ontologies.filter(
+            repo_url__iregex=r"^https?://(?:www\.)?github\.com(?:/|$)"
+        )
+    if collection:
+        ontologies = ontologies.filter(collection__contains=[collection])
+    if subject:
+        ontologies = ontologies.filter(subjects__contains=[subject])
+    return [ontology.to_dict() for ontology in ontologies]
+
+
 TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "search",
-            "description": "Search for terms. Results include label, IRI, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
+            "name": "batch_search",
+            "description": "Search for up to five queries in parallel. Results are keyed by query and include label, IRI, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
-                    "ontologyId": {"type": "string"},
-                    "page": {
-                        "type": "integer",
-                        "description": "Zero-based result-page number.",
-                        "minimum": 0,
-                        "default": 0,
+                    "query": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 5,
+                        "uniqueItems": True,
                     },
-                    "size": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 20,
-                        "default": 20,
+                    "ontologyId": {"type": "string"},
+                    "excludeCandidates": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "ontologyId": {"type": "string"},
+                                "iri": {"type": "string"},
+                            },
+                            "required": ["ontologyId", "iri"],
+                        },
                     },
                 },
                 "required": ["query"],
@@ -312,7 +363,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_term_detail",
-            "description": "Get term details, including label, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
+            "description": "Get term details, including label, IRI, definition, ontology ID, parent, synonyms, and term type (class, property, or individual). The parent label may be a string or list and its IRI is a string.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -346,6 +397,24 @@ TOOLS = [
                     },
                 },
                 "required": ["iri", "ontologyId", "term_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ontologies_list",
+            "description": "List all cached ontologies, optionally filtered by collection and subject. By default, only ontologies hosted on GitHub are returned. Results include ontologyId, repo_url, definition, subjects, collection, importsFrom, exportsTo, label, and lang.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "collection": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "hosted_on_github": {
+                        "type": "boolean",
+                        "default": True,
+                    },
+                },
             },
         },
     },

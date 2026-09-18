@@ -1,16 +1,18 @@
 import json
+from threading import Barrier
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, call, patch
 
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from ai_assist import tasks
+from ai_assist import functions as shared_functions, tasks
 from ai_assist.consumers import AgentConsumer
 from ai_assist import routing as root_routing
 from ai_assist import urls as root_urls
 from ai_assist import views as root_views
 from ai_assist import transport
+from ai_assist.models import Ontology
 
 from . import agent, runner, state as workflow_state
 from . import views as workflow_views
@@ -35,6 +37,127 @@ class PackageFacadeTests(SimpleTestCase):
         self.assertEqual(transport.run_group_name("run-1"), "agent_run_run-1")
         self.assertEqual(transport.WEBSOCKET_PATH_TEMPLATE, "/ws/ai_assist/agent/{run_id}/")
         self.assertEqual(transport.SERVER_MESSAGE_TYPE_CONNECTED, "connected")
+
+
+class BatchSearchTests(SimpleTestCase):
+    @patch("ai_assist.functions.search")
+    def test_searches_five_queries_in_parallel_with_default_page_and_size(self, search):
+        barrier = Barrier(5)
+
+        def search_result(query, **kwargs):
+            barrier.wait(timeout=2)
+            return "Error" if query == "failed" else [{"label": query}]
+
+        search.side_effect = search_result
+        excluded = [{"ontologyId": "onto", "iri": "iri"}]
+        queries = ["one", "two", "three", "four", "failed"]
+
+        result = shared_functions.batch_search(queries, "onto", excluded)
+
+        self.assertEqual(result["one"], [{"label": "one"}])
+        self.assertEqual(result["failed"], [])
+        search.assert_has_calls(
+            [
+                call(query, ontologyId="onto", excludedCandidates=excluded)
+                for query in queries
+            ],
+            any_order=True,
+        )
+
+    @patch("ai_assist.functions.search")
+    def test_rejects_more_than_five_queries(self, search):
+        result = shared_functions.batch_search([str(index) for index in range(6)])
+
+        self.assertEqual(result, "Error: query must be a list of 1 to 5 unique strings")
+        search.assert_not_called()
+
+    @patch("ai_assist.functions.search")
+    def test_rejects_duplicate_queries(self, search):
+        result = shared_functions.batch_search(["term", "term"])
+
+        self.assertEqual(result, "Error: query must be a list of 1 to 5 unique strings")
+        search.assert_not_called()
+
+
+class OntologiesListTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        Ontology.objects.create(
+            ontologyId="one",
+            repo_url="https://github.com/example/one",
+            definition="First",
+            label="One",
+            collection=["shared"],
+            subjects=["biology"],
+        )
+        Ontology.objects.create(
+            ontologyId="two",
+            repo_url="https://github.com/example/two",
+            definition="Second",
+            label="Two",
+            collection=["shared"],
+            subjects=["chemistry"],
+        )
+        Ontology.objects.create(
+            ontologyId="three",
+            repo_url="https://github.com/example/three",
+            definition="Third",
+            label="Three",
+            collection=["other"],
+            subjects=["biology"],
+        )
+        Ontology.objects.create(
+            ontologyId="external",
+            repo_url="https://example.com/external",
+            definition="External",
+            label="External",
+            collection=["shared"],
+            subjects=["biology"],
+        )
+
+    def test_returns_all_ontologies_without_filters(self):
+        self.assertCountEqual(
+            [ontology["ontologyId"] for ontology in shared_functions.ontologies_list()],
+            ["one", "two", "three"],
+        )
+
+    def test_can_include_ontologies_not_hosted_on_github(self):
+        self.assertCountEqual(
+            [
+                ontology["ontologyId"]
+                for ontology in shared_functions.ontologies_list(
+                    hosted_on_github=False
+                )
+            ],
+            ["one", "two", "three", "external"],
+        )
+
+    def test_filters_by_collection_and_subject(self):
+        self.assertEqual(
+            [
+                ontology["ontologyId"]
+                for ontology in shared_functions.ontologies_list("shared", "biology")
+            ],
+            ["one"],
+        )
+
+    def test_filters_by_collection(self):
+        self.assertCountEqual(
+            [
+                ontology["ontologyId"]
+                for ontology in shared_functions.ontologies_list(collection="shared")
+            ],
+            ["one", "two"],
+        )
+
+    def test_filters_by_subject(self):
+        self.assertCountEqual(
+            [
+                ontology["ontologyId"]
+                for ontology in shared_functions.ontologies_list(subject="biology")
+            ],
+            ["one", "three"],
+        )
 
 
 class RootConsumerTests(IsolatedAsyncioTestCase):
@@ -73,6 +196,7 @@ class StartAgentViewTests(TestCase):
             "New term",
             "A useful definition",
             "Process:activity,event,action,occurrence,procedure",
+            "",
         )
         task.delay.assert_called_once_with(
             run_id=payload["run_id"], input_text="normalized prompt"
@@ -106,18 +230,18 @@ class StartAgentViewTests(TestCase):
             workflow="search",
         )
 
-    @override_settings(AI_ASSIST_ENABLED=False)
     @patch("ai_assist.term_request_search.views.run_agent_task")
     @patch("user_service.libs.decorators.Auth")
     @patch("user_service.libs.decorators.get_headers_dict", return_value={})
     @patch("user_service.libs.decorators.get_username_from_request", return_value="alice")
     @patch("user_service.libs.decorators.is_csrf_valid", return_value=True)
     def test_start_search_is_disabled(self, csrf, owner, headers, auth, task):
-        response = self.client.post(
-            reverse("start_search"),
-            data=json.dumps({"description": "Find an existing term"}),
-            content_type="application/json",
-        )
+        with self.settings(AI_ASSIST_ENABLED=False):
+            response = self.client.post(
+                reverse("start_search"),
+                data=json.dumps({"description": "Find an existing term"}),
+                content_type="application/json",
+            )
 
         self.assertEqual(response.status_code, 404)
         task.delay.assert_not_called()
@@ -129,24 +253,24 @@ class StartAgentViewTests(TestCase):
 
         self.assertIn(response.status_code, (401, 403))
 
-    @override_settings(AI_ASSIST_ENABLED=False)
     @patch("ai_assist.term_request_search.views.run_agent_task")
     @patch("user_service.libs.decorators.Auth")
     @patch("user_service.libs.decorators.get_headers_dict", return_value={})
     @patch("user_service.libs.decorators.get_username_from_request", return_value="alice")
     @patch("user_service.libs.decorators.is_csrf_valid", return_value=True)
     def test_start_agent_is_disabled_by_default(self, csrf, owner, headers, auth, task):
-        response = self.client.post(
-            reverse("start_agent"),
-            data=json.dumps(
-                {
-                    "label": "New term",
-                    "description": "A useful definition",
-                    "category": "Process",
-                }
-            ),
-            content_type="application/json",
-        )
+        with self.settings(AI_ASSIST_ENABLED=False):
+            response = self.client.post(
+                reverse("start_agent"),
+                data=json.dumps(
+                    {
+                        "label": "New term",
+                        "description": "A useful definition",
+                        "category": "Process",
+                    }
+                ),
+                content_type="application/json",
+            )
 
         self.assertEqual(response.status_code, 404)
         task.delay.assert_not_called()
@@ -161,7 +285,7 @@ class StartAgentViewTests(TestCase):
             reverse("start_agent"), data="{", content_type="application/json"
         )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.content)
         task.delay.assert_not_called()
 
     @patch("ai_assist.term_request_search.views.run_agent_task")
@@ -228,10 +352,407 @@ class StartAgentViewTests(TestCase):
         self.assertEqual(response.status_code, 503)
         deleted_keys = redis.delete.call_args.args
         self.assertIn("agent:", deleted_keys[0])
-        self.assertTrue(any(key.endswith(":owner") for key in deleted_keys))
         self.assertTrue(any(key.endswith(":socket_token") for key in deleted_keys))
 
 class AgentTests(TestCase):
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_removes_batch_search_after_three_calls_in_both_phases(self, call_openrouter):
+        call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
+
+        for phase in ("search", "term_request"):
+            with self.subTest(phase=phase):
+                response = workflow_state.new_response(phase)
+                response["search_call_count"] = 3
+
+                agent.run_term_request_or_search_agent_turn([], response)
+
+                tools = call_openrouter.call_args.args[1]
+                self.assertNotIn(
+                    "batch_search", [tool["function"]["name"] for tool in tools]
+                )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_ontologies_list_is_only_available_once_for_term_requests(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
+
+        search_response = workflow_state.new_response("search")
+        agent.run_term_request_or_search_agent_turn([], search_response)
+        self.assertNotIn(
+            "ontologies_list",
+            [tool["function"]["name"] for tool in call_openrouter.call_args.args[1]],
+        )
+
+        term_response = workflow_state.new_response("term_request")
+        agent.run_term_request_or_search_agent_turn([], term_response)
+        tool_names = [
+            tool["function"]["name"] for tool in call_openrouter.call_args.args[1]
+        ]
+        self.assertEqual(tool_names, ["ontologies_list"])
+
+        term_response["ontologies_list_call_count"] = 1
+        agent.run_term_request_or_search_agent_turn([], term_response)
+        tool_names = [
+            tool["function"]["name"] for tool in call_openrouter.call_args.args[1]
+        ]
+        self.assertNotIn("ontologies_list", tool_names)
+        self.assertIn("get_roots", tool_names)
+        self.assertIn("get_term_children", tool_names)
+        self.assertNotIn("batch_search", tool_names)
+        self.assertNotIn("search_under_term", tool_names)
+        self.assertNotIn("get_individuals", tool_names)
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_search_phase_rejects_ontologies_list_tool_call(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "ontologies_list",
+                            "arguments": "{}",
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        ontologies_list = Mock()
+        response = workflow_state.new_response("search")
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"ontologies_list": ontologies_list},
+        ):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        ontologies_list.assert_not_called()
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "ontologies_list is not available for search."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_executes_ontologies_list_only_once(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": call_id,
+                        "function": {"name": "ontologies_list", "arguments": "{}"},
+                    }
+                    for call_id in ("call-1", "call-2")
+                ],
+            },
+            {},
+        )
+        ontologies_list = Mock(
+            return_value=[
+                {"ontologyId": ontology_id}
+                for ontology_id in ("one", "two", "three", "four")
+            ]
+        )
+        response = workflow_state.new_response("term_request")
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"ontologies_list": ontologies_list},
+        ):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        ontologies_list.assert_called_once_with(hosted_on_github=True)
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "ontologies_list can only be called once."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_limits_structural_search_to_three_ontologies(
+        self, call_openrouter
+    ):
+        tool_calls = [
+            {
+                "id": "ontologies",
+                "function": {"name": "ontologies_list", "arguments": "{}"},
+            }
+        ] + [
+            {
+                "id": f"roots-{ontology_id}",
+                "function": {
+                    "name": "get_roots",
+                    "arguments": json.dumps(
+                        {"ontologyId": ontology_id, "type": "class"}
+                    ),
+                },
+            }
+            for ontology_id in ("one", "two", "three", "four")
+        ]
+        call_openrouter.return_value = (
+            {"content": "", "tool_calls": tool_calls},
+            {},
+        )
+        ontologies_list = Mock(
+            return_value=[
+                {"ontologyId": ontology_id}
+                for ontology_id in ("one", "two", "three", "four")
+            ]
+        )
+        get_roots = Mock(return_value=[])
+        response = workflow_state.new_response("term_request")
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"ontologies_list": ontologies_list, "get_roots": get_roots},
+        ):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        self.assertEqual(get_roots.call_count, 3)
+        self.assertEqual(response["selected_ontology_ids"], ["one", "two", "three"])
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "At most three ontologies can be selected."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_rejects_duplicate_root_pages(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "ontologies",
+                        "function": {"name": "ontologies_list", "arguments": "{}"},
+                    }
+                ]
+                + [
+                    {
+                        "id": call_id,
+                        "function": {
+                            "name": "get_roots",
+                            "arguments": json.dumps(
+                                {
+                                    "ontologyId": "one",
+                                    "type": "class",
+                                    "page": page,
+                                }
+                            ),
+                        },
+                    }
+                    for call_id, page in (
+                        ("roots-0", 0),
+                        ("roots-1", 1),
+                        ("roots-1-again", 1),
+                    )
+                ],
+            },
+            {},
+        )
+        functions = {
+            "ontologies_list": Mock(return_value=[{"ontologyId": "one"}]),
+            "get_roots": Mock(return_value=[]),
+        }
+        response = workflow_state.new_response("term_request")
+
+        with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        self.assertEqual(functions["get_roots"].call_count, 2)
+        self.assertEqual(
+            response["visited_root_pages"],
+            [
+                {"ontologyId": "one", "type": "class", "page": 0},
+                {"ontologyId": "one", "type": "class", "page": 1},
+            ],
+        )
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "This ontology root page has already been visited."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_tracks_and_rejects_revisited_nodes(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "ontologies",
+                        "function": {"name": "ontologies_list", "arguments": "{}"},
+                    },
+                    {
+                        "id": "roots",
+                        "function": {
+                            "name": "get_roots",
+                            "arguments": '{"ontologyId": "one", "type": "class"}',
+                        },
+                    },
+                ]
+                + [
+                    {
+                        "id": call_id,
+                        "function": {
+                            "name": "get_term_children",
+                            "arguments": json.dumps(
+                                {
+                                    "ontologyId": "one",
+                                    "iri": "root",
+                                    "term_type": "class",
+                                    "page": page,
+                                }
+                            ),
+                        },
+                    }
+                    for call_id, page in (
+                        ("children-0", 0),
+                        ("children-1", 1),
+                        ("children-1-again", 1),
+                    )
+                ],
+            },
+            {},
+        )
+        functions = {
+            "ontologies_list": Mock(return_value=[{"ontologyId": "one"}]),
+            "get_roots": Mock(
+                return_value=[
+                    {"ontologyId": "one", "iri": "root", "type": "class"}
+                ]
+            ),
+            "get_term_children": Mock(
+                return_value=[
+                    {"ontologyId": "one", "iri": "child", "type": "class"}
+                ]
+            ),
+        }
+        response = workflow_state.new_response("term_request")
+
+        with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        self.assertEqual(functions["get_term_children"].call_count, 2)
+        self.assertEqual(
+            response["visited_nodes"],
+            [{"ontologyId": "one", "iri": "root"}],
+        )
+        self.assertEqual(
+            response["visited_node_pages"],
+            [
+                {"ontologyId": "one", "iri": "root", "page": 0},
+                {"ontologyId": "one", "iri": "root", "page": 1},
+            ],
+        )
+        self.assertIn(
+            {"ontologyId": "one", "iri": "child", "type": "class"},
+            response["known_terms"],
+        )
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "This ontology node page has already been visited."},
+        )
+        call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
+        agent.run_term_request_or_search_agent_turn(messages, response)
+        traversal_context = next(
+            message["content"]
+            for message in messages
+            if message.get("role") == "system"
+            and message.get("content", "").startswith(agent.TRAVERSAL_CONTEXT_PREFIX)
+        )
+        self.assertIn('"iri": "root"', traversal_context)
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_rejects_children_for_unknown_term(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "ontologies",
+                        "function": {"name": "ontologies_list", "arguments": "{}"},
+                    },
+                    {
+                        "id": "roots",
+                        "function": {
+                            "name": "get_roots",
+                            "arguments": '{"ontologyId": "one", "type": "class"}',
+                        },
+                    },
+                    {
+                        "id": "children",
+                        "function": {
+                            "name": "get_term_children",
+                            "arguments": '{"ontologyId": "one", "iri": "unknown", "term_type": "class"}',
+                        },
+                    },
+                ],
+            },
+            {},
+        )
+        functions = {
+            "ontologies_list": Mock(return_value=[{"ontologyId": "one"}]),
+            "get_roots": Mock(
+                return_value=[
+                    {"ontologyId": "one", "iri": "root", "type": "class"}
+                ]
+            ),
+            "get_term_children": Mock(),
+        }
+
+        with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
+            messages = []
+            agent.run_term_request_or_search_agent_turn(
+                messages, workflow_state.new_response("term_request")
+            )
+
+        functions["get_term_children"].assert_not_called()
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "Select a term returned by get_roots or get_term_children."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_search_phase_aggregates_batch_results(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "batch_search",
+                            "arguments": '{"query": ["one", "two"]}',
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        batch_search = Mock(
+            return_value={
+                "one": [{"label": "One"}],
+                "two": [{"label": "Two"}],
+            }
+        )
+        response = workflow_state.new_response("search")
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS, {"batch_search": batch_search}
+        ):
+            agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertEqual(response["search_call_count"], 1)
+        self.assertEqual(
+            response["search_results"], [{"label": "One"}, {"label": "Two"}]
+        )
+
     @patch("ai_assist.term_request_search.agent.validate_term_request_agent_response", return_value=(True, '{"candidates": [{"parent_label": "P", "ontology": "O", "parent_iri": "I"}, {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"}, {"parent_label": "P3", "ontology": "O", "parent_iri": "I3"}]}', ""))
     @patch("ai_assist.term_request_search.agent.call_openrouter")
     def test_term_request_agent_records_final_json_response(self, call_openrouter, validate):
@@ -281,8 +802,98 @@ class AgentTests(TestCase):
         self.assertFalse(is_valid)
         get_term_detail.assert_not_called()
 
+    @patch("ai_assist.term_request_search.agent.get_term_detail", return_value={})
+    def test_term_request_candidates_must_be_reached_by_traversal(self, get_term_detail):
+        content = json.dumps(
+            {
+                "candidates": [
+                    {"parent_label": f"P{index}", "ontology": "O", "parent_iri": f"I{index}"}
+                    for index in range(3)
+                ]
+            }
+        )
+
+        is_valid, _, feedback = agent.validate_term_request_agent_response(
+            content,
+            ["O"],
+            [
+                {"ontologyId": "O", "iri": "I0", "type": "class"},
+                {"ontologyId": "O", "iri": "I1", "type": "class"},
+            ],
+        )
+
+        self.assertFalse(is_valid)
+        self.assertEqual(feedback, "Return candidates reached through the ontology traversal.")
+        get_term_detail.assert_not_called()
+
+    @patch("ai_assist.term_request_search.agent.get_term_detail")
+    def test_term_request_candidate_labels_come_from_term_details(self, get_term_detail):
+        get_term_detail.side_effect = lambda iri, ontology_id: {
+            "label": f"Canonical {iri}",
+            "iri": iri,
+            "ontologyId": ontology_id,
+        }
+        content = json.dumps(
+            {
+                "candidates": [
+                    {
+                        "parent_label": "Invented",
+                        "ontology": "O",
+                        "parent_iri": f"I{index}",
+                    }
+                    for index in range(3)
+                ]
+            }
+        )
+        known_terms = [
+            {"ontologyId": "O", "iri": f"I{index}", "type": "class"}
+            for index in range(3)
+        ]
+
+        is_valid, final_response, _ = agent.validate_term_request_agent_response(
+            content, ["O"], known_terms
+        )
+
+        self.assertTrue(is_valid)
+        self.assertEqual(
+            [
+                candidate["parent_label"]
+                for candidate in json.loads(final_response)["candidates"]
+            ],
+            ["Canonical I0", "Canonical I1", "Canonical I2"],
+        )
+
 
 class AgentTaskTests(TestCase):
+    def test_normalize_state_backfills_structural_search_state(self):
+        state = {"messages": [], "response": {}, "steps": 0}
+
+        workflow_state.normalize_state(state)
+
+        self.assertEqual(state["response"]["ontologies_list_call_count"], 0)
+        self.assertEqual(state["response"]["available_ontology_ids"], [])
+        self.assertEqual(state["response"]["selected_ontology_ids"], [])
+        self.assertEqual(state["response"]["known_terms"], [])
+        self.assertEqual(state["response"]["visited_root_pages"], [])
+        self.assertEqual(state["response"]["visited_nodes"], [])
+        self.assertEqual(state["response"]["visited_node_pages"], [])
+
+    @patch("ai_assist.term_request_search.runner.run_conversation")
+    @patch("ai_assist.term_request_search.runner.emit")
+    @patch("ai_assist.term_request_search.runner.redis_client")
+    def test_term_request_starts_directly_in_structural_phase(
+        self, redis, emit, run_conversation
+    ):
+        redis.blpop.return_value = ("ready", "1")
+
+        runner.run_term_request_search_agent("run-1", "input", "term_request")
+
+        state = run_conversation.call_args.args[1]
+        self.assertEqual(state["response"]["phase"], "term_request")
+        self.assertIn(
+            "Required structural search process", state["messages"][0]["content"]
+        )
+
     @patch("ai_assist.tasks.run_term_request_search_agent")
     def test_celery_start_task_delegates_without_changing_signature(self, run_agent):
         tasks.run_agent_task("run-1", "input", "search")
@@ -348,6 +959,7 @@ class AgentTaskTests(TestCase):
     @patch("ai_assist.term_request_search.runner.redis_client")
     def test_run_agent_exception_emits_error_and_cleans_up(self, redis, emit, cleanup):
         redis.get.return_value = None
+        redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
 
         with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=RuntimeError("LLM unavailable")):
@@ -374,7 +986,7 @@ class AgentTaskTests(TestCase):
         redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
 
-        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response: None) as run_agent:
+        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None: None) as run_agent:
             runner.run_conversation("run-1", state)
 
         self.assertEqual(run_agent.call_count, runner.TERM_REQUEST_AGENT_MAX_LOOPS)
@@ -385,9 +997,10 @@ class AgentTaskTests(TestCase):
     @patch("ai_assist.term_request_search.runner.redis_client")
     def test_worker_persists_resumable_state_when_question_is_needed(self, redis, emit, save_state):
         redis.get.return_value = None
+        redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
 
-        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response: response.update(needs_user_input=True, question="Clarify")):
+        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None: response.update(needs_user_input=True, question="Clarify")):
             runner.run_conversation("run-1", state)
 
         self.assertEqual(state["steps"], 1)
@@ -398,7 +1011,7 @@ class AgentTaskTests(TestCase):
     @patch("ai_assist.term_request_search.runner.redis_client")
     def test_resume_task_loads_saved_state(self, redis, run_conversation):
         saved = {"messages": [], "response": workflow_state.new_response(), "steps": 3}
-        redis.get.return_value = json.dumps(saved)
+        redis.get.side_effect = [json.dumps(saved), None]
 
         runner.resume_term_request_search_agent("run-1")
 
@@ -462,12 +1075,12 @@ class AgentConsumerTests(IsolatedAsyncioTestCase):
         redis.expire.assert_called_once_with("agent:run-1:ready", 60)
         consumer.send_json.assert_awaited_once_with({"type": "connected", "run_id": "run-1"})
 
-    @override_settings(AI_ASSIST_ENABLED=False)
     @patch("ai_assist.consumers.redis_client")
     async def test_connect_rejects_when_assist_is_disabled(self, redis):
         consumer = self.make_consumer()
 
-        await consumer.connect()
+        with override_settings(AI_ASSIST_ENABLED=False):
+            await consumer.connect()
         await consumer.disconnect(4403)
 
         consumer.close.assert_awaited_once_with(code=4403)

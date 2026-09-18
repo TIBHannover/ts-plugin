@@ -49,12 +49,20 @@ def run_term_request_search_agent(run_id, input_text, workflow="term_request"):
         ):
             cleanup_run(run_id)
             return
+        phase = "search" if workflow == "search" else "term_request"
         state = {
             "messages": [
-                {"role": "system", "content": SEARCH_AGENT_PROMPT},
+                {
+                    "role": "system",
+                    "content": (
+                        SEARCH_AGENT_PROMPT
+                        if phase == "search"
+                        else TERM_REQUEST_AGENT_PROMPT
+                    ),
+                },
                 {"role": "user", "content": input_text},
             ],
-            "response": new_response("search"),
+            "response": new_response(phase),
             "steps": 0,
             "workflow": workflow,
             "input_text": input_text,

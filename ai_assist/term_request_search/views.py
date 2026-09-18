@@ -74,6 +74,7 @@ def start_workflow(request, workflow, include_workflow=True):
     else:
         label = payload.get("label")
         category = payload.get("category")
+        domain = payload.get("domain", "")
         if not all(isinstance(value, str) and value.strip() for value in (label, category)):
             return JsonResponse(
                 {"error": "'label', 'description', and 'category' must be non-empty strings."},
@@ -84,6 +85,13 @@ def start_workflow(request, workflow, include_workflow=True):
                 {"error": f"'label' must be at most {settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."},
                 status=400,
             )
+        if not isinstance(domain, str) or len(domain) > settings.TERM_REQUEST_INPUT_MAX_LENGTH:
+            return JsonResponse(
+                {
+                    "error": f"'domain' must be a string of at most {settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."
+                },
+                status=400,
+            )
         category = next((key for key in CATEGORIES if key.casefold() == category.casefold()), None)
         if category is None:
             return JsonResponse({"error": "'category' is not supported."}, status=400)
@@ -91,6 +99,7 @@ def start_workflow(request, workflow, include_workflow=True):
             label,
             description,
             f"{category}:{','.join(CATEGORIES[category])}",
+            domain.strip(),
         )
 
     run_id = str(uuid.uuid4())
