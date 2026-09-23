@@ -13,8 +13,10 @@ def harvest_ontologies_task():
 
 
 @shared_task
-def run_agent_task(run_id, input_text, workflow="term_request"):
-    return run_term_request_search_agent(run_id, input_text, workflow)
+def run_agent_task(run_id, input_text, workflow="term_request", search_inputs=None):
+    if search_inputs is None:
+        return run_term_request_search_agent(run_id, input_text, workflow)
+    return run_term_request_search_agent(run_id, input_text, workflow, search_inputs)
 
 
 @shared_task

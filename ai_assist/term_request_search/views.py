@@ -69,6 +69,7 @@ def start_workflow(request, workflow, include_workflow=True):
             {"error": f"'description' must be at most {settings.TERM_REQUEST_INPUT_MAX_LENGTH} characters."},
             status=400,
         )
+    search_inputs = None
     if workflow == "search":
         input_text = build_search_agent_input(description)
     else:
@@ -101,6 +102,10 @@ def start_workflow(request, workflow, include_workflow=True):
             f"{category}:{','.join(CATEGORIES[category])}",
             domain.strip(),
         )
+        search_inputs = [
+            build_search_agent_input(label.strip()),
+            build_search_agent_input(description.strip()),
+        ]
 
     run_id = str(uuid.uuid4())
     websocket_token = secrets.token_urlsafe(WEBSOCKET_TOKEN_BYTES)
@@ -118,6 +123,8 @@ def start_workflow(request, workflow, include_workflow=True):
         task_kwargs = {"run_id": run_id, "input_text": input_text}
         if include_workflow:
             task_kwargs["workflow"] = workflow
+        if search_inputs:
+            task_kwargs["search_inputs"] = search_inputs
         task = run_agent_task.delay(**task_kwargs)
     except Exception:
         rollback_run_start(run_id)

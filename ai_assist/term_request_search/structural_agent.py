@@ -18,6 +18,8 @@ def initialize_state(response: dict[str, Any]) -> None:
     response.setdefault("ontologies_list_call_count", 0)
     response.setdefault("available_ontology_ids", [])
     response.setdefault("selected_ontology_ids", [])
+    response.setdefault("rejected_ontology_ids", [])
+    response.setdefault("allow_ontology_reselection", False)
     response.setdefault("known_terms", [])
     response.setdefault("visited_root_pages", [])
     response.setdefault("visited_nodes", [])
@@ -28,6 +30,8 @@ def update_traversal_context(messages: list[dict[str, Any]], response: dict[str,
     content = (
         f"{TRAVERSAL_CONTEXT_PREFIX}\n"
         f"Selected ontologies: {json.dumps(response['selected_ontology_ids'])}\n"
+        f"Rejected ontologies: {json.dumps(response['rejected_ontology_ids'])}\n"
+        f"Ontology reselection available: {json.dumps(response['allow_ontology_reselection'])}\n"
         f"Visited root pages: {json.dumps(response['visited_root_pages'])}\n"
         f"Visited nodes: {json.dumps(response['visited_nodes'])}\n"
         f"Visited node pages: {json.dumps(response['visited_node_pages'])}\n"
@@ -42,10 +46,18 @@ def update_traversal_context(messages: list[dict[str, Any]], response: dict[str,
     messages.insert(1 if messages else 0, {"role": "system", "content": content})
 
 
-def available_tools(tools: list[dict[str, Any]], ontologies_list_call_count: int):
+def available_tools(
+    tools: list[dict[str, Any]],
+    ontologies_list_call_count: int,
+    allow_ontology_reselection: bool = False,
+    ontology_selection_required: bool = False,
+):
     if not ontologies_list_call_count:
         return [tool for tool in tools if tool["function"]["name"] == "ontologies_list"]
-    return [tool for tool in tools if tool["function"]["name"] in STRUCTURAL_TOOL_NAMES - {"ontologies_list"}]
+    if ontology_selection_required:
+        return [tool for tool in tools if tool["function"]["name"] == "get_roots"]
+    names = STRUCTURAL_TOOL_NAMES if allow_ontology_reselection else STRUCTURAL_TOOL_NAMES - {"ontologies_list"}
+    return [tool for tool in tools if tool["function"]["name"] in names]
 
 
 def execute_tool(
@@ -54,6 +66,11 @@ def execute_tool(
     response: dict[str, Any],
     functions: dict[str, Callable[..., Any]],
 ) -> Any:
+    if response["allow_ontology_reselection"]:
+        if function_name == "ontologies_list":
+            restart_ontology_selection(response)
+        else:
+            response["allow_ontology_reselection"] = False
     ontology_id = arguments.get("ontologyId")
     node = {"ontologyId": ontology_id, "iri": arguments.get("iri")}
     node_page = {**node, "page": arguments.get("page", 0)}
@@ -66,23 +83,50 @@ def execute_tool(
         return {"error": validation_error}
 
     if function_name == "ontologies_list":
+        arguments.clear()
         arguments["hosted_on_github"] = True
     result = functions[function_name](**arguments)
     _record_result(function_name, ontology_id, result, response, node, node_page, root_page)
     return result
 
 
+def restart_ontology_selection(response):
+    for ontology_id in response["selected_ontology_ids"]:
+        if ontology_id not in response["rejected_ontology_ids"]:
+            response["rejected_ontology_ids"].append(ontology_id)
+    response["ontologies_list_call_count"] = 0
+    response["available_ontology_ids"] = []
+    response["selected_ontology_ids"] = []
+    response["known_terms"] = []
+    response["visited_root_pages"] = []
+    response["visited_nodes"] = []
+    response["visited_node_pages"] = []
+    response["allow_ontology_reselection"] = False
+    response["ontology_selection_failure_count"] = 0
+    response["suppressed_domain_question_count"] = 0
+    response["invalid_question_reason_count"] = 0
+    response["force_tool_call"] = False
+
+
 def _validation_error(function_name, arguments, response, ontology_id, known_term, node_page, root_page):
     if function_name == "ontologies_list":
         response["ontologies_list_call_count"] += 1
         return "ontologies_list can only be called once." if response["ontologies_list_call_count"] > 1 else None
+    if (
+        response["selected_ontology_ids"]
+        and ontology_id
+        and ontology_id != response["selected_ontology_ids"][0]
+    ):
+        return f'Use the selected ontologyId "{response["selected_ontology_ids"][0]}" for all future tool calls.'
     if function_name in ("get_roots", "get_term_children") and not response["ontologies_list_call_count"]:
         return "Call ontologies_list before traversing ontologies."
     if function_name == "get_roots":
         if ontology_id not in response["available_ontology_ids"]:
             return "Select an ontology returned by ontologies_list."
-        if ontology_id not in response["selected_ontology_ids"] and len(response["selected_ontology_ids"]) >= 3:
-            return "At most three ontologies can be selected."
+        if ontology_id in response["rejected_ontology_ids"]:
+            return f'Ontology "{ontology_id}" was rejected. Select the next closest ontology.'
+        if ontology_id not in response["selected_ontology_ids"] and response["selected_ontology_ids"]:
+            return "Only one ontology can be selected."
         if root_page in response["visited_root_pages"]:
             return "This ontology root page has already been visited."
     if function_name == "get_term_children":
@@ -102,8 +146,12 @@ def _record_result(function_name, ontology_id, result, response, node, node_page
         return
     if function_name == "ontologies_list" and isinstance(result, list):
         response["available_ontology_ids"] = [ontology["ontologyId"] for ontology in result if isinstance(ontology, dict) and isinstance(ontology.get("ontologyId"), str)]
+        response["suppressed_domain_question_count"] = 0
+        if response["available_ontology_ids"]:
+            response["ontology_selection_failure_count"] = 0
     if function_name == "get_roots" and ontology_id not in response["selected_ontology_ids"]:
         response["selected_ontology_ids"].append(ontology_id)
+        response["suppressed_domain_question_count"] = 0
     if function_name == "get_roots":
         response["visited_root_pages"].append(root_page)
     if function_name in ("get_roots", "get_term_children") and isinstance(result, list):
@@ -118,6 +166,6 @@ def _record_known_terms(terms, ontology_id, response):
     for term in terms:
         if not isinstance(term, dict):
             continue
-        known_term = {"ontologyId": term.get("ontologyId", ontology_id), "iri": term.get("iri"), "type": term.get("type")}
+        known_term = {"ontologyId": ontology_id, "iri": term.get("iri"), "type": term.get("type")}
         if all(isinstance(value, str) for value in known_term.values()) and known_term not in response["known_terms"]:
             response["known_terms"].append(known_term)

@@ -21,6 +21,7 @@ from ai_assist.transport import (
 )
 from ai_assist.redis_client import redis_client
 from .state import (
+    AWAITING_REJECTION_TERM_REQUEST_SEARCH,
     RUN_REDIS_KEYS,
     RUN_REDIS_KEY_AWAITING_INPUT,
     RUN_REDIS_KEY_AWAITING_REJECTION,
@@ -40,7 +41,9 @@ SEARCH_AGENT_MAX_LOOPS = settings.SEARCH_AI_ASSIST_MAX_LOOPS
 TERM_REQUEST_AGENT_MAX_REJECTIONS = settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS
 
 
-def run_term_request_search_agent(run_id, input_text, workflow="term_request"):
+def run_term_request_search_agent(
+    run_id, input_text, workflow="term_request", search_inputs=None
+):
     # the task gets triggered by the client when calling the start_agent view.
     try:
         if not redis_client.blpop(
@@ -49,7 +52,9 @@ def run_term_request_search_agent(run_id, input_text, workflow="term_request"):
         ):
             cleanup_run(run_id)
             return
-        phase = "search" if workflow == "search" else "term_request"
+        phase = "search"
+        search_inputs = search_inputs if workflow == "term_request" else None
+        search_inputs = search_inputs or [input_text]
         state = {
             "messages": [
                 {
@@ -60,13 +65,17 @@ def run_term_request_search_agent(run_id, input_text, workflow="term_request"):
                         else TERM_REQUEST_AGENT_PROMPT
                     ),
                 },
-                {"role": "user", "content": input_text},
+                {"role": "user", "content": search_inputs[0]},
             ],
             "response": new_response(phase),
             "steps": 0,
             "workflow": workflow,
             "input_text": input_text,
+            "search_inputs": search_inputs,
+            "search_input_index": 0,
+            "search_candidates": [],
         }
+        state["response"]["project_domain_provided"] = has_project_domain(input_text)
         emit(
             {
                 "type": SERVER_MESSAGE_TYPE_AGENT_STARTED,
@@ -124,6 +133,8 @@ def resume_term_request_search_agent(run_id):
                 )
                 state["response"]["search_results"] = []
                 state["response"]["candidates"] = []
+            else:
+                state["response"]["allow_ontology_reselection"] = True
         elif (
             state["response"].get("phase") == "term_request"
             and state["response"].get("needs_user_input")
@@ -152,7 +163,14 @@ def run_conversation(run_id, state):
                 return
 
             add_pending_user_input(messages, run_id)
-            run_term_request_or_search_agent_turn(messages, response, run_id)
+            run_term_request_or_search_agent_turn(
+                messages,
+                response,
+                run_id,
+                lambda message: emit(
+                    {"type": SERVER_MESSAGE_TYPE_PROGRESS, "message": message}, run_id
+                ),
+            )
             state["steps"] = step + 1
 
             if response["needs_user_input"]:
@@ -170,20 +188,50 @@ def run_conversation(run_id, state):
                 if (
                     state.get("workflow") == "term_request"
                     and response["phase"] == "search"
-                    and not response["candidates"]
                 ):
-                    start_term_request_phase(state)
-                    run_conversation(run_id, state)
-                    return
-                save_state(run_id, state, RUN_REDIS_KEY_AWAITING_REJECTION)
-                emit_done(response, run_id)
+                    if finish_term_request_search_pass(state):
+                        run_conversation(run_id, state)
+                        return
+                    if not response["candidates"]:
+                        start_term_request_phase(state)
+                        run_conversation(run_id, state)
+                        return
+                preliminary_search = (
+                    state.get("workflow") == "term_request"
+                    and response["phase"] == "search"
+                )
+                save_state(
+                    run_id,
+                    state,
+                    RUN_REDIS_KEY_AWAITING_REJECTION,
+                    (
+                        AWAITING_REJECTION_TERM_REQUEST_SEARCH
+                        if preliminary_search
+                        else None
+                    ),
+                )
+                emit_done(
+                    response,
+                    run_id,
+                    "The target term might already exist."
+                    if preliminary_search
+                    else None,
+                )
                 return
 
-            if response["progress_feedback"]:
+            progress_feedbacks = [] if response.get("progress_emitted_live") else (
+                response.get("progress_feedbacks")
+                or (
+                    [response["progress_feedback"]]
+                    if response.get("progress_feedback")
+                    else []
+                )
+            )
+            for progress_feedback in progress_feedbacks:
                 emit(
                     {
                         "type": SERVER_MESSAGE_TYPE_PROGRESS,
-                        "message": response["progress_feedback"],
+                        "message": progress_feedback,
                     },
                     run_id,
                 )
@@ -200,7 +248,9 @@ def run_conversation(run_id, state):
         fail_run(run_id)
 
 
-def save_state(run_id, state, awaiting_key=RUN_REDIS_KEY_AWAITING_INPUT):
+def save_state(
+    run_id, state, awaiting_key=RUN_REDIS_KEY_AWAITING_INPUT, awaiting_value=None
+):
     # this saves two things in redis: the last state for the agnet and also the action key for the next step for the consumer
     redis_client.setex(
         run_redis_key(run_id, RUN_REDIS_KEY_STATE), RUN_TTL_SECONDS, json.dumps(state)
@@ -209,22 +259,23 @@ def save_state(run_id, state, awaiting_key=RUN_REDIS_KEY_AWAITING_INPUT):
         run_redis_key(run_id, awaiting_key),
         RUN_TTL_SECONDS,
         (
-            state["response"]["phase"]
+            awaiting_value
+            or state["response"]["phase"]
             if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION
             else REDIS_TRUE_VALUE
         ),
     )
 
 
-def emit_done(response, run_id):
-    emit(
-        {
-            "type": SERVER_MESSAGE_TYPE_DONE,
-            "candidates": response.get("candidates", []),
-            "error": response.get("error", ""),
-        },
-        run_id,
-    )
+def emit_done(response, run_id, message=None):
+    payload = {
+        "type": SERVER_MESSAGE_TYPE_DONE,
+        "candidates": response.get("candidates", []),
+        "error": response.get("error", ""),
+    }
+    if message:
+        payload["message"] = message
+    emit(payload, run_id)
 
 
 def emit_no_candidates_found(run_id, phase):
@@ -250,7 +301,53 @@ def start_term_request_phase(state):
         {"role": "user", "content": state["input_text"]},
     ]
     state["response"] = new_response("term_request")
+    state["response"]["project_domain_provided"] = has_project_domain(
+        state["input_text"]
+    )
     state["steps"] = 0
+
+
+def finish_term_request_search_pass(state):
+    response = state["response"]
+    candidates = state.setdefault("search_candidates", [])
+    candidate_ids = {
+        (candidate["ontologyId"].casefold(), candidate["iri"])
+        for candidate in candidates
+    }
+    for candidate in response["candidates"][:5]:
+        candidate_id = (candidate["ontologyId"].casefold(), candidate["iri"])
+        if candidate_id not in candidate_ids:
+            candidates.append(candidate)
+            candidate_ids.add(candidate_id)
+
+    search_inputs = state.get("search_inputs") or [state["input_text"]]
+    next_index = state.get("search_input_index", 0) + 1
+    if next_index >= len(search_inputs):
+        response["candidates"] = candidates[:10]
+        if response["candidates"]:
+            response["error"] = None
+        return False
+
+    state["search_input_index"] = next_index
+    state["messages"] = [
+        {"role": "system", "content": SEARCH_AGENT_PROMPT},
+        {"role": "user", "content": search_inputs[next_index]},
+    ]
+    state["response"] = new_response("search")
+    state["response"]["excluded_search_candidates"] = [
+        {"ontologyId": candidate["ontologyId"], "iri": candidate["iri"]}
+        for candidate in candidates
+    ]
+    state["steps"] = 0
+    return True
+
+
+def has_project_domain(input_text):
+    return any(
+        line.partition(":")[2].strip()
+        for line in input_text.splitlines()
+        if line.startswith("Project domain:")
+    )
 
 
 def emit(payload, run_id):

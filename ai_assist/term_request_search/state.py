@@ -31,6 +31,7 @@ RUN_REDIS_KEY_AWAITING_REJECTION = "awaiting_rejection"
 RUN_REDIS_KEY_AWAITING_REJECTION_REASON = "awaiting_rejection_reason"
 RUN_REDIS_KEY_TERM_REQUEST_AGENT_REJECTIONS = "rejections"
 RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS = "search_rejections"
+AWAITING_REJECTION_TERM_REQUEST_SEARCH = "term_request_search"
 
 TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS = 3
 CLIENT_MESSAGE_TYPE_CANCEL = "cancel"
@@ -68,18 +69,27 @@ def new_response(phase="term_request"):
         "ontologies_list_call_count": 0,
         "available_ontology_ids": [],
         "selected_ontology_ids": [],
+        "rejected_ontology_ids": [],
+        "allow_ontology_reselection": False,
         "known_terms": [],
         "visited_root_pages": [],
         "visited_nodes": [],
         "visited_node_pages": [],
         "successful_search_count": 0,
         "progress_feedback": "",
+        "progress_feedbacks": [],
+        "progress_emitted_live": False,
         "needs_user_input": False,
         "question": "",
         "phase": phase,
         "search_results": [],
         "excluded_search_candidates": [],
         "clarification_count": 0,
+        "project_domain_provided": False,
+        "suppressed_domain_question_count": 0,
+        "invalid_question_reason_count": 0,
+        "ontology_selection_failure_count": 0,
+        "force_tool_call": False,
     }
 
 

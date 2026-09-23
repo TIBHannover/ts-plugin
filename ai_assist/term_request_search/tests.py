@@ -79,6 +79,38 @@ class BatchSearchTests(SimpleTestCase):
         search.assert_not_called()
 
 
+class TermDetailTests(SimpleTestCase):
+    @patch("ai_assist.functions.requests.get")
+    def test_normalizes_list_label_parent_and_type(self, get):
+        get.return_value.json.return_value = {
+            "label": ["process"],
+            "iri": "http://purl.obolibrary.org/obo/BFO_0000015",
+            "ontologyId": "obi",
+            "directParent": ["http://www.w3.org/2002/07/owl#Thing"],
+            "linkedEntities": {},
+            "type": ["class", "entity"],
+        }
+
+        result = shared_functions.get_term_detail(
+            "http://purl.obolibrary.org/obo/BFO_0000015", "obi"
+        )
+
+        self.assertEqual(result["label"], "process")
+        self.assertEqual(
+            result["parent"]["iri"], "http://www.w3.org/2002/07/owl#Thing"
+        )
+        self.assertEqual(result["type"], "class")
+
+    @patch("ai_assist.functions.logger.exception")
+    @patch("ai_assist.functions.requests.get", side_effect=RuntimeError("unavailable"))
+    def test_returns_error_and_logs_exception(self, get, exception):
+        iri = "http://purl.obolibrary.org/obo/BFO_0000015"
+
+        result = shared_functions.get_term_detail(iri, "obi")
+
+        self.assertEqual(result, f"Error: no results found for {iri}")
+        exception.assert_called_once()
+
 class OntologiesListTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -119,6 +151,18 @@ class OntologiesListTests(TestCase):
         self.assertCountEqual(
             [ontology["ontologyId"] for ontology in shared_functions.ontologies_list()],
             ["one", "two", "three"],
+        )
+
+    def test_tool_schema_does_not_expose_collection_or_subject_filters(self):
+        tool = next(
+            tool
+            for tool in shared_functions.TOOLS
+            if tool["function"]["name"] == "ontologies_list"
+        )
+
+        self.assertEqual(
+            set(tool["function"]["parameters"]["properties"]),
+            {"hosted_on_github"},
         )
 
     def test_can_include_ontologies_not_hosted_on_github(self):
@@ -180,7 +224,13 @@ class StartAgentViewTests(TestCase):
 
         response = self.client.post(
             reverse("start_agent"),
-            data=json.dumps({"label": "New term", "description": "A useful definition", "category": "Process"}),
+            data=json.dumps(
+                {
+                    "label": "New Term definition: term",
+                    "description": "A Term category: useful definition",
+                    "category": "Process",
+                }
+            ),
             content_type="application/json",
         )
 
@@ -193,13 +243,18 @@ class StartAgentViewTests(TestCase):
             f"/ws/ai_assist/agent/{payload['run_id']}/",
         )
         build_prompt.assert_called_once_with(
-            "New term",
-            "A useful definition",
+            "New Term definition: term",
+            "A Term category: useful definition",
             "Process:activity,event,action,occurrence,procedure",
             "",
         )
         task.delay.assert_called_once_with(
-            run_id=payload["run_id"], input_text="normalized prompt"
+            run_id=payload["run_id"],
+            input_text="normalized prompt",
+            search_inputs=[
+                "Search text: New Term definition: term",
+                "Search text: A Term category: useful definition",
+            ],
         )
         redis.delete.assert_called_once()
 
@@ -404,6 +459,44 @@ class AgentTests(TestCase):
         self.assertNotIn("get_individuals", tool_names)
 
     @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_bounds_missing_initial_ontology_list(self, call_openrouter):
+        call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
+        response = workflow_state.new_response("term_request")
+        messages = []
+
+        for _ in range(3):
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        self.assertTrue(response["is_final"])
+        self.assertEqual(response["error"], "Assistant could not retrieve ontology metadata.")
+        self.assertTrue(call_openrouter.call_args_list[1].args[2])
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_finishes_when_ontology_list_fails(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "ontologies",
+                        "function": {"name": "ontologies_list", "arguments": "{}"},
+                    }
+                ],
+            },
+            {},
+        )
+        response = workflow_state.new_response("term_request")
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"ontologies_list": Mock(side_effect=RuntimeError("metadata unavailable"))},
+        ):
+            agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertTrue(response["is_final"])
+        self.assertEqual(response["error"], "metadata unavailable")
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
     def test_search_phase_rejects_ontologies_list_tool_call(self, call_openrouter):
         call_openrouter.return_value = (
             {
@@ -458,6 +551,7 @@ class AgentTests(TestCase):
             ]
         )
         response = workflow_state.new_response("term_request")
+        response["ontology_selection_failure_count"] = 2
 
         with patch.dict(
             agent.TERM_REQUEST_SEARCH_FUNCTIONS,
@@ -467,13 +561,14 @@ class AgentTests(TestCase):
             agent.run_term_request_or_search_agent_turn(messages, response)
 
         ontologies_list.assert_called_once_with(hosted_on_github=True)
+        self.assertEqual(response["ontology_selection_failure_count"], 0)
         self.assertEqual(
             json.loads(messages[-1]["content"]),
             {"error": "ontologies_list can only be called once."},
         )
 
     @patch("ai_assist.term_request_search.agent.call_openrouter")
-    def test_term_request_limits_structural_search_to_three_ontologies(
+    def test_term_request_limits_structural_search_to_one_ontology(
         self, call_openrouter
     ):
         tool_calls = [
@@ -513,11 +608,13 @@ class AgentTests(TestCase):
             messages = []
             agent.run_term_request_or_search_agent_turn(messages, response)
 
-        self.assertEqual(get_roots.call_count, 3)
-        self.assertEqual(response["selected_ontology_ids"], ["one", "two", "three"])
+        self.assertEqual(get_roots.call_count, 1)
+        self.assertEqual(response["selected_ontology_ids"], ["one"])
         self.assertEqual(
             json.loads(messages[-1]["content"]),
-            {"error": "At most three ontologies can be selected."},
+            {
+                "error": 'Use the selected ontologyId "one" for all future tool calls.'
+            },
         )
 
     @patch("ai_assist.term_request_search.agent.call_openrouter")
@@ -760,7 +857,7 @@ class AgentTests(TestCase):
             {"content": '{"candidates": [{"parent_label": "P", "ontology": "O", "parent_iri": "I"}, {"parent_label": "P2", "ontology": "O", "parent_iri": "I2"}, {"parent_label": "P3", "ontology": "O", "parent_iri": "I3"}]}'},
             {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         )
-        result = {"usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, "search_call_count": 0, "is_final": False, "needs_user_input": False}
+        result = {"usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, "search_call_count": 0, "ontologies_list_call_count": 1, "available_ontology_ids": ["O"], "selected_ontology_ids": ["O"], "is_final": False, "needs_user_input": False}
         messages = []
 
         agent.run_term_request_or_search_agent_turn(messages, result)
@@ -774,16 +871,21 @@ class AgentTests(TestCase):
     @patch("ai_assist.term_request_search.agent.call_openrouter")
     def test_term_request_agent_pauses_for_assistant_question(self, call_openrouter):
         call_openrouter.return_value = (
-            {"content": '{"question": "Which domain should I use?"}'},
+            {
+                "content": (
+                    '{"question": "Should I traverse classes or properties?", '
+                    '"reason": "missing_context"}'
+                )
+            },
             {},
         )
-        result = {"usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, "search_call_count": 0, "is_final": False, "needs_user_input": False}
+        result = {"usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, "search_call_count": 0, "ontologies_list_call_count": 1, "available_ontology_ids": ["O"], "selected_ontology_ids": ["O"], "is_final": False, "needs_user_input": False}
         messages = []
 
         agent.run_term_request_or_search_agent_turn(messages, result)
 
         self.assertTrue(result["needs_user_input"])
-        self.assertEqual(result["question"], "Which domain should I use?")
+        self.assertEqual(result["question"], "Should I traverse classes or properties?")
         self.assertFalse(result["is_final"])
 
     @patch("ai_assist.term_request_search.agent.get_term_detail", return_value={})
@@ -827,7 +929,9 @@ class AgentTests(TestCase):
         get_term_detail.assert_not_called()
 
     @patch("ai_assist.term_request_search.agent.get_term_detail")
-    def test_term_request_candidate_labels_come_from_term_details(self, get_term_detail):
+    def test_term_request_candidates_use_selected_ontology_and_detail_labels(
+        self, get_term_detail
+    ):
         get_term_detail.side_effect = lambda iri, ontology_id: {
             "label": f"Canonical {iri}",
             "iri": iri,
@@ -838,7 +942,7 @@ class AgentTests(TestCase):
                 "candidates": [
                     {
                         "parent_label": "Invented",
-                        "ontology": "O",
+                        "ontology": "Ontology display name",
                         "parent_iri": f"I{index}",
                     }
                     for index in range(3)
@@ -862,6 +966,13 @@ class AgentTests(TestCase):
             ],
             ["Canonical I0", "Canonical I1", "Canonical I2"],
         )
+        self.assertEqual(
+            [
+                candidate["ontology"]
+                for candidate in json.loads(final_response)["candidates"]
+            ],
+            ["O", "O", "O"],
+        )
 
 
 class AgentTaskTests(TestCase):
@@ -881,17 +992,145 @@ class AgentTaskTests(TestCase):
     @patch("ai_assist.term_request_search.runner.run_conversation")
     @patch("ai_assist.term_request_search.runner.emit")
     @patch("ai_assist.term_request_search.runner.redis_client")
-    def test_term_request_starts_directly_in_structural_phase(
+    def test_term_request_starts_in_search_phase(
         self, redis, emit, run_conversation
     ):
         redis.blpop.return_value = ("ready", "1")
+        input_text = (
+            "Term label: assay\n"
+            "Term definition: a process that measures a sample\n"
+            "Term category: Process:activity\n"
+            "Project domain:"
+        )
 
-        runner.run_term_request_search_agent("run-1", "input", "term_request")
+        runner.run_term_request_search_agent(
+            "run-1",
+            input_text,
+            "term_request",
+            [
+                "Search text: assay",
+                "Search text: a process that measures a sample",
+            ],
+        )
 
         state = run_conversation.call_args.args[1]
-        self.assertEqual(state["response"]["phase"], "term_request")
+        self.assertEqual(state["response"]["phase"], "search")
+        self.assertIn("terminology search assistant", state["messages"][0]["content"])
+        self.assertEqual(
+            state["search_inputs"],
+            [
+                "Search text: assay",
+                "Search text: a process that measures a sample",
+            ],
+        )
+        self.assertEqual(state["messages"][1]["content"], "Search text: assay")
+
+    def test_term_request_combines_five_candidates_from_each_search(self):
+        label_candidates = [
+            {"label": f"Label {index}", "ontologyId": "O", "iri": f"L{index}"}
+            for index in range(5)
+        ]
+        description_candidates = [
+            {
+                "label": f"Description {index}",
+                "ontologyId": "O",
+                "iri": f"D{index}",
+            }
+            for index in range(5)
+        ]
+        state = {
+            "messages": [],
+            "response": workflow_state.new_response("search"),
+            "steps": 1,
+            "workflow": "term_request",
+            "input_text": "term request input",
+            "search_inputs": ["Search text: label", "Search text: description"],
+            "search_input_index": 0,
+            "search_candidates": [],
+        }
+        state["response"]["candidates"] = label_candidates
+
+        self.assertTrue(runner.finish_term_request_search_pass(state))
+        self.assertEqual(
+            state["messages"][1],
+            {"role": "user", "content": "Search text: description"},
+        )
+        self.assertEqual(
+            state["response"]["excluded_search_candidates"],
+            [
+                {"ontologyId": candidate["ontologyId"], "iri": candidate["iri"]}
+                for candidate in label_candidates
+            ],
+        )
+
+        state["response"]["candidates"] = description_candidates
+
+        self.assertFalse(runner.finish_term_request_search_pass(state))
+        self.assertEqual(
+            state["response"]["candidates"],
+            label_candidates + description_candidates,
+        )
+
+    @patch("ai_assist.term_request_search.runner.emit")
+    @patch("ai_assist.term_request_search.runner.redis_client")
+    def test_term_request_search_result_warns_and_waits_for_rejection(
+        self, redis, emit
+    ):
+        redis.get.return_value = None
+        redis.lpop.return_value = None
+        state = {
+            "messages": [],
+            "response": workflow_state.new_response("search"),
+            "steps": 0,
+            "workflow": "term_request",
+            "input_text": "Term label: Example",
+        }
+        candidates = [
+            {"label": "Example", "ontologyId": "O", "iri": "I"}
+        ]
+
+        with patch(
+            "ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn",
+            side_effect=lambda messages, response, run_id=None, progress_callback=None: response.update(
+                is_final=True, candidates=candidates
+            ),
+        ):
+            runner.run_conversation("run-1", state)
+
+        redis.setex.assert_any_call(
+            "agent:run-1:awaiting_rejection", 3600, "term_request_search"
+        )
+        emit.assert_any_call(
+            {
+                "type": "done",
+                "candidates": candidates,
+                "error": None,
+                "message": "The target term might already exist.",
+            },
+            "run-1",
+        )
+
+    @patch("ai_assist.term_request_search.runner.run_conversation")
+    @patch("ai_assist.term_request_search.runner.redis_client")
+    def test_rejected_preliminary_search_starts_term_request(
+        self, redis, run_conversation
+    ):
+        state = {
+            "messages": [],
+            "response": workflow_state.new_response("search"),
+            "steps": 1,
+            "workflow": "term_request",
+            "input_text": "Term label: Example",
+        }
+        redis.get.side_effect = [json.dumps(state), "1"]
+
+        runner.resume_term_request_search_agent("run-1")
+
+        resumed_state = run_conversation.call_args.args[1]
+        self.assertEqual(resumed_state["response"]["phase"], "term_request")
         self.assertIn(
-            "Required structural search process", state["messages"][0]["content"]
+            "Required structural search process",
+            resumed_state["messages"][0]["content"],
         )
 
     @patch("ai_assist.tasks.run_term_request_search_agent")
@@ -900,6 +1139,18 @@ class AgentTaskTests(TestCase):
 
         self.assertEqual(tasks.run_agent_task.name, "ai_assist.tasks.run_agent_task")
         run_agent.assert_called_once_with("run-1", "input", "search")
+
+    @patch("ai_assist.tasks.run_term_request_search_agent")
+    def test_celery_start_task_passes_term_request_search_inputs(self, run_agent):
+        search_inputs = ["Search text: label", "Search text: description"]
+
+        tasks.run_agent_task(
+            "run-1", "input", "term_request", search_inputs=search_inputs
+        )
+
+        run_agent.assert_called_once_with(
+            "run-1", "input", "term_request", search_inputs
+        )
 
     @patch("ai_assist.tasks.resume_term_request_search_agent")
     def test_celery_resume_task_delegates_without_changing_signature(self, resume_agent):
@@ -986,7 +1237,7 @@ class AgentTaskTests(TestCase):
         redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
 
-        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None: None) as run_agent:
+        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None, progress_callback=None: None) as run_agent:
             runner.run_conversation("run-1", state)
 
         self.assertEqual(run_agent.call_count, runner.TERM_REQUEST_AGENT_MAX_LOOPS)
@@ -1000,7 +1251,7 @@ class AgentTaskTests(TestCase):
         redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
 
-        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None: response.update(needs_user_input=True, question="Clarify")):
+        with patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn", side_effect=lambda messages, response, run_id=None, progress_callback=None: response.update(needs_user_input=True, question="Clarify")):
             runner.run_conversation("run-1", state)
 
         self.assertEqual(state["steps"], 1)
@@ -1143,6 +1394,134 @@ class AgentConsumerTests(IsolatedAsyncioTestCase):
                     "message": "Why do you reject these recommendations?",
                 },
             },
+        )
+
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_reject_preliminary_search_starts_term_request(self, redis):
+        consumer = self.make_consumer()
+        redis.get.return_value = "term_request_search"
+        redis.getdel.return_value = "term_request_search"
+        redis.set.return_value = True
+        redis.incr.return_value = 1
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ), patch(
+            "ai_assist.term_request_search.messages.current_app.send_task"
+        ) as send_task:
+            send_task.side_effect = lambda *args, **kwargs: redis.setex(
+                "agent:run-1:awaiting_rejection", 3600, "term_request"
+            )
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        send_task.assert_called_once_with(
+            "ai_assist.tasks.resume_agent_task", args=["run-1"]
+        )
+        redis.getdel.assert_called_once_with("agent:run-1:awaiting_rejection")
+        redis.delete.assert_called_once_with("agent:run-1:resuming")
+        redis.setex.assert_called_once_with(
+            "agent:run-1:awaiting_rejection", 3600, "term_request"
+        )
+        consumer.channel_layer.group_send.assert_not_awaited()
+
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_failed_preliminary_search_resume_restores_waiting_marker(
+        self, redis
+    ):
+        consumer = self.make_consumer()
+        consumer.send_json = AsyncMock()
+        redis.get.return_value = "term_request_search"
+        redis.getdel.return_value = "term_request_search"
+        redis.set.return_value = True
+        redis.incr.return_value = 1
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ), patch(
+            "ai_assist.term_request_search.messages.current_app.send_task",
+            side_effect=RuntimeError("broker unavailable"),
+        ):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.set.assert_any_call(
+            "agent:run-1:awaiting_rejection",
+            "term_request_search",
+            nx=True,
+            ex=3600,
+        )
+        redis.delete.assert_called_once_with("agent:run-1:resuming")
+
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_preliminary_search_counter_failure_does_not_claim_marker(
+        self, redis
+    ):
+        consumer = self.make_consumer()
+        consumer.send_json = AsyncMock()
+        redis.get.return_value = "term_request_search"
+        redis.set.return_value = True
+        redis.incr.side_effect = RuntimeError("redis unavailable")
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.getdel.assert_not_called()
+        redis.delete.assert_called_once_with("agent:run-1:resuming")
+        consumer.send_json.assert_awaited_once_with(
+            {"type": "error", "message": "Unable to resume assistant."}
+        )
+
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_preliminary_search_expiry_failure_does_not_claim_marker(
+        self, redis
+    ):
+        consumer = self.make_consumer()
+        consumer.send_json = AsyncMock()
+        redis.get.return_value = "term_request_search"
+        redis.set.return_value = True
+        redis.incr.return_value = 1
+        redis.expire.side_effect = RuntimeError("redis unavailable")
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.getdel.assert_not_called()
+        redis.delete.assert_called_once_with("agent:run-1:resuming")
+        consumer.send_json.assert_awaited_once_with(
+            {"type": "error", "message": "Unable to resume assistant."}
+        )
+
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_preliminary_search_claim_failure_restores_marker(self, redis):
+        consumer = self.make_consumer()
+        consumer.send_json = AsyncMock()
+        redis.get.return_value = "term_request_search"
+        redis.set.return_value = True
+        redis.incr.return_value = 1
+        redis.getdel.side_effect = RuntimeError("redis unavailable")
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ):
+            await consumer.receive(text_data=json.dumps({"type": "reject"}))
+
+        redis.set.assert_any_call(
+            "agent:run-1:awaiting_rejection",
+            "term_request_search",
+            nx=True,
+            ex=3600,
+        )
+        redis.delete.assert_called_once_with("agent:run-1:resuming")
+        consumer.send_json.assert_awaited_once_with(
+            {"type": "error", "message": "Unable to resume assistant."}
         )
 
     @patch("ai_assist.term_request_search.messages.redis_client")

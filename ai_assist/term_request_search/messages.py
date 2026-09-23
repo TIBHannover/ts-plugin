@@ -16,6 +16,7 @@ from ai_assist.transport import (
     run_redis_key,
 )
 from .state import (
+    AWAITING_REJECTION_TERM_REQUEST_SEARCH,
     CLIENT_MESSAGE_TYPE_CANCEL,
     CLIENT_MESSAGE_TYPE_REJECT,
     CLIENT_MESSAGE_TYPE_USER_MESSAGE,
@@ -25,6 +26,7 @@ from .state import (
     RUN_REDIS_KEY_AWAITING_REJECTION_REASON,
     RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS,
     RUN_REDIS_KEY_TERM_REQUEST_AGENT_REJECTIONS,
+    SERVER_MESSAGE_TYPE_PROGRESS,
     SERVER_MESSAGE_TYPE_QUESTION,
 )
 
@@ -100,15 +102,47 @@ class TermRequestSearchMessageHandler:
             return
         rejection_key = (
             RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS
-            if waiting == "search"
+            if waiting in ("search", AWAITING_REJECTION_TERM_REQUEST_SEARCH)
             else RUN_REDIS_KEY_TERM_REQUEST_AGENT_REJECTIONS
         )
-        rejection_count = await sync_to_async(redis_client.incr)(
-            run_redis_key(self.consumer.run_id, rejection_key)
-        )
-        await sync_to_async(redis_client.expire)(
-            run_redis_key(self.consumer.run_id, rejection_key), RUN_TTL_SECONDS
-        )
+        try:
+            rejection_count = await sync_to_async(redis_client.incr)(
+                run_redis_key(self.consumer.run_id, rejection_key)
+            )
+            await sync_to_async(redis_client.expire)(
+                run_redis_key(self.consumer.run_id, rejection_key), RUN_TTL_SECONDS
+            )
+        except Exception:
+            await self.fail_resume()
+            return
+        if waiting == AWAITING_REJECTION_TERM_REQUEST_SEARCH:
+            try:
+                claimed = await sync_to_async(redis_client.getdel)(
+                    run_redis_key(
+                        self.consumer.run_id, RUN_REDIS_KEY_AWAITING_REJECTION
+                    )
+                )
+            except Exception:
+                await sync_to_async(redis_client.set)(
+                    run_redis_key(
+                        self.consumer.run_id, RUN_REDIS_KEY_AWAITING_REJECTION
+                    ),
+                    AWAITING_REJECTION_TERM_REQUEST_SEARCH,
+                    nx=True,
+                    ex=RUN_TTL_SECONDS,
+                )
+                await self.fail_resume()
+                return
+            if claimed != waiting:
+                await sync_to_async(redis_client.delete)(
+                    run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING)
+                )
+                return
+            await self.resume_task(
+                RUN_REDIS_KEY_AWAITING_REJECTION,
+                restore_value=AWAITING_REJECTION_TERM_REQUEST_SEARCH,
+            )
+            return
         if rejection_count <= settings.TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS:
             await sync_to_async(redis_client.delete)(
                 run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_AWAITING_REJECTION),
@@ -164,7 +198,10 @@ class TermRequestSearchMessageHandler:
         if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
             message.set_message(
                 f"The user rejected these recommendations because: {user_message}. "
-                "Return different suitable candidates."
+                "Decide whether this means the selected ontology does not fit. If it does, "
+                "call ontologies_list to select the next closest ontology and "
+                "restart traversal. Otherwise, return different suitable candidates from "
+                "the selected ontology."
             )
         await sync_to_async(redis_client.rpush)(
             run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_INPUT),
@@ -173,26 +210,47 @@ class TermRequestSearchMessageHandler:
         await sync_to_async(redis_client.expire)(
             run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_INPUT), RUN_TTL_SECONDS
         )
+        if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
+            await self.consumer.channel_layer.group_send(
+                self.consumer.group_name,
+                {
+                    "type": CHANNEL_EVENT_TYPE_AGENT_EVENT,
+                    "payload": {
+                        "type": SERVER_MESSAGE_TYPE_PROGRESS,
+                        "message": "Reviewing your feedback and deciding whether to select a different ontology.",
+                    },
+                },
+            )
         await self.resume_task(awaiting_key)
 
-    async def resume_task(self, awaiting_key):
+    async def resume_task(self, awaiting_key, restore_value=None):
         try:
             await sync_to_async(current_app.send_task)(
                 RESUME_TERM_REQUEST_SEARCH_AGENT_TASK_NAME,
                 args=[self.consumer.run_id],
             )
         except Exception:
-            await sync_to_async(redis_client.delete)(
-                run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING)
-            )
-            await self.consumer.send_json(
-                {
-                    "type": SERVER_MESSAGE_TYPE_ERROR,
-                    "message": "Unable to resume assistant.",
-                }
-            )
+            if restore_value:
+                await sync_to_async(redis_client.set)(
+                    run_redis_key(self.consumer.run_id, awaiting_key),
+                    restore_value,
+                    nx=True,
+                    ex=RUN_TTL_SECONDS,
+                )
+            await self.fail_resume()
             return
+        keys = [run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING)]
+        if not restore_value:
+            keys.insert(0, run_redis_key(self.consumer.run_id, awaiting_key))
+        await sync_to_async(redis_client.delete)(*keys)
+
+    async def fail_resume(self):
         await sync_to_async(redis_client.delete)(
-            run_redis_key(self.consumer.run_id, awaiting_key),
-            run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING),
+            run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING)
+        )
+        await self.consumer.send_json(
+            {
+                "type": SERVER_MESSAGE_TYPE_ERROR,
+                "message": "Unable to resume assistant.",
+            }
         )

@@ -1,10 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+import logging
 import requests
 from typing import Any
 import urllib
 from ai_assist.utils import convert_to_str, get_parent_from_term, get_term_type
 from ai_assist.models import Ontology
+
+logger = logging.getLogger(__name__)
 
 TS_BASE_URL = "https://api.terminology.tib.eu/api/v2/"
 TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
@@ -149,6 +152,7 @@ def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
 
 
 def get_term_detail(iri: str, ontologyId: str):
+    original_iri = iri
     try:
         iri = urllib.parse.quote(iri, safe="")
         resp = requests.get(
@@ -158,7 +162,7 @@ def get_term_detail(iri: str, ontologyId: str):
         resp = resp.json()
         definition = convert_to_str(resp.get("definition", ""))
         return {
-            "label": resp["label"],
+            "label": convert_to_str(resp["label"]),
             "iri": resp["iri"],
             "definition": definition[:DEFNITION_MAX_LENGTH],
             "ontologyId": resp["ontologyId"],
@@ -166,8 +170,9 @@ def get_term_detail(iri: str, ontologyId: str):
             "synonym": resp.get("synonym", []),
             "type": get_term_type(resp)
         }
-    except:
-        return f"Error: no results found for {iri}"
+    except Exception:
+        logger.exception("Unable to get term details for %s in %s", original_iri, ontologyId)
+        return f"Error: no results found for {original_iri}"
 
 
 def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
@@ -404,12 +409,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "ontologies_list",
-            "description": "List all cached ontologies, optionally filtered by collection and subject. By default, only ontologies hosted on GitHub are returned. Results include ontologyId, repo_url, definition, subjects, collection, importsFrom, exportsTo, label, and lang.",
+            "description": "List all cached ontologies hosted on GitHub. Results include ontologyId, repo_url, definition, subjects, collection, importsFrom, exportsTo, label, and lang. Choose the closest ontology using the term label and definition as primary criteria. Domain is only a low-weight hint and never a required metadata match.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "subject": {"type": "string"},
                     "hosted_on_github": {
                         "type": "boolean",
                         "default": True,
