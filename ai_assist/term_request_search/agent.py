@@ -35,6 +35,7 @@ FUNCTION_LABELS = {
     "get_individuals": "Checking individuals",
     "get_ontology_detail": "Checking ontology details",
     "ontologies_list": "Listing ontologies",
+    "find_category_terms": "Locating the category subtree",
 }
 TERM_REQUEST_TOOL_NAMES = structural_agent.STRUCTURAL_TOOL_NAMES
 TRAVERSAL_CONTEXT_PREFIX = structural_agent.TRAVERSAL_CONTEXT_PREFIX
@@ -74,7 +75,12 @@ def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
         return f'{FUNCTION_LABELS[fn_name]} for {args.get("query", [])}{suffix}'
     if fn_name == "ontologies_list":
         return FUNCTION_LABELS[fn_name]
-    if fn_name in ("get_ontology_detail", "get_roots", "get_individuals"):
+    if fn_name in (
+        "find_category_terms",
+        "get_ontology_detail",
+        "get_roots",
+        "get_individuals",
+    ):
         return f'{FUNCTION_LABELS[fn_name]} for "{args.get("ontologyId", "")}"'
     return f'{FUNCTION_LABELS[fn_name]} for "{args.get("iri", "")}"'
 
@@ -506,6 +512,14 @@ def run_term_request_or_search_agent_turn(
                 content, response["search_results"]
             )
         else:
+            if response["term_category"] and not response["category_anchor_nodes"]:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Locate an exact category or category-synonym term before returning parent candidates.",
+                    }
+                )
+                return
             is_valid, final_response, feedback = validate_term_request_agent_response(
                 content,
                 response["selected_ontology_ids"],

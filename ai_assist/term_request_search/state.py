@@ -78,6 +78,9 @@ def new_response(phase="term_request"):
         "allow_ontology_reselection": False,
         "pending_ontology_rejection_decision": False,
         "known_terms": [],
+        "category_search_complete": False,
+        "category_anchor_nodes": [],
+        "category_branch_nodes": [],
         "visited_root_pages": [],
         "visited_nodes": [],
         "visited_node_pages": [],
@@ -96,6 +99,7 @@ def new_response(phase="term_request"):
         "invalid_question_reason_count": 0,
         "ontology_selection_failure_count": 0,
         "force_tool_call": False,
+        "term_category": "",
     }
 
 
@@ -117,5 +121,26 @@ def normalize_state(state):
         )
     for key, value in new_response().items():
         response.setdefault(key, value)
+    if not response["term_category"]:
+        response["term_category"] = get_term_category(state.get("input_text", ""))
     state.setdefault("steps", 0)
     return state
+
+
+def get_term_category(input_text):
+    return next(
+        (
+            line.partition(":")[2].strip()
+            for line in input_text.splitlines()
+            if line.startswith("Term category:")
+        ),
+        "",
+    )
+
+
+def get_category_values(category):
+    return [
+        value.strip()
+        for value in category.replace(":", ",", 1).split(",")
+        if value.strip()
+    ]

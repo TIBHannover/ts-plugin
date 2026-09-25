@@ -24,7 +24,8 @@ def search(
     ontologyId: str = "",
     excludedCandidates: list[dict[str, str]] | None = None,
     page = 0,
-    size = 20
+    size = 20,
+    validate_ontology = True,
 ) -> list[dict[str, Any]] | str:
     try:
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -39,10 +40,11 @@ def search(
             "exclusive": "true",
             "facetFields": "type ontologyId",
         }
-        if ontologyId:
+        if ontologyId and validate_ontology:
             onto_details = get_ontology_detail(ontologyId)
             if "Error" in onto_details:
                 raise Exception("Ontology not found")
+        if ontologyId:
             params["ontology"] = ontologyId.lower()
         resp = requests.get(
             f"{TS_BASE_URL}entities", params=params, timeout=REQUEST_TIMEOUT
@@ -60,7 +62,7 @@ def search(
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
-                    "label": r["label"],
+                    "label": convert_to_str(r["label"]),
                     "iri": r["iri"],
                     "definition": (
                         definition[:DEFNITION_MAX_LENGTH]

@@ -14,7 +14,13 @@ from ai_assist import views as root_views
 from ai_assist import transport
 from ai_assist.models import Ontology
 
-from . import agent, runner, state as workflow_state
+from . import (
+    agent,
+    functions as workflow_functions,
+    runner,
+    state as workflow_state,
+    structural_agent,
+)
 from . import views as workflow_views
 
 
@@ -453,6 +459,327 @@ class StartAgentViewTests(TestCase):
         self.assertTrue(any(key.endswith(":socket_token") for key in deleted_keys))
 
 class AgentTests(TestCase):
+    @patch(
+        "ai_assist.term_request_search.functions.get_ontology_detail",
+        return_value={"ontologyId": "obi"},
+    )
+    @patch("ai_assist.term_request_search.functions.search")
+    def test_find_category_terms_paginates_and_filters_anchors(
+        self, search, get_ontology_detail
+    ):
+        first_page = [
+            {
+                "label": f"Unrelated {index}",
+                "ontologyId": "obi",
+                "iri": f"unrelated-{index}",
+                "synonym": [],
+                "type": "class",
+            }
+            for index in range(18)
+        ] + [
+            {
+                "label": "Process",
+                "ontologyId": "obi",
+                "iri": "individual-process",
+                "synonym": [],
+                "type": "individual",
+            },
+            {
+                "label": "Has event",
+                "ontologyId": "obi",
+                "iri": "event-property",
+                "synonym": ["event"],
+                "type": "property",
+            },
+        ]
+        second_page = [
+            {
+                "label": ["Process"],
+                "ontologyId": "obi",
+                "iri": "process-class",
+                "synonym": [],
+                "type": "class",
+            }
+        ]
+        search.side_effect = lambda query, ontology_id, page, size, validate_ontology: (
+            first_page
+            if query == "Process" and page == 0
+            else second_page
+            if query == "Process" and page == 1
+            else []
+        )
+
+        result = workflow_functions.find_category_terms(
+            "obi", "Process:activity,event,action,occurrence,procedure"
+        )
+
+        self.assertEqual(
+            [term["iri"] for term in result["Process"]],
+            ["event-property", "process-class"],
+        )
+        self.assertTrue(
+            any(call.kwargs["page"] == 1 for call in search.call_args_list)
+        )
+        self.assertEqual(search.call_count, workflow_functions.CATEGORY_SEARCH_MAX_PAGES)
+        self.assertTrue(
+            all(
+                call.kwargs["validate_ontology"] is False
+                for call in search.call_args_list
+            )
+        )
+        get_ontology_detail.assert_called_once_with("obi")
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_category_search_uses_request_category_and_records_anchors(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "category",
+                        "function": {
+                            "name": "find_category_terms",
+                            "arguments": '{"ontologyId": "obi"}',
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        find_category_terms = Mock(
+            return_value={
+                "Process": [
+                    {"ontologyId": "obi", "iri": "process", "type": "class"}
+                ]
+            }
+        )
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["term_category"] = "Process:activity,event"
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"find_category_terms": find_category_terms},
+        ):
+            agent.run_term_request_or_search_agent_turn([], response)
+
+        find_category_terms.assert_called_once_with(
+            ontologyId="obi", category="Process:activity,event"
+        )
+        self.assertTrue(response["category_search_complete"])
+        self.assertIn(
+            {"ontologyId": "obi", "iri": "process", "type": "class"},
+            response["known_terms"],
+        )
+        self.assertEqual(
+            response["category_anchor_nodes"],
+            [{"ontologyId": "obi", "iri": "process"}],
+        )
+        self.assertEqual(
+            response["category_branch_nodes"],
+            [{"ontologyId": "obi", "iri": "process"}],
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_category_anchor_blocks_unrelated_root_traversal(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "children",
+                        "function": {
+                            "name": "search_in_children",
+                            "arguments": json.dumps(
+                                {
+                                    "query": "assay",
+                                    "ontologyId": "obi",
+                                    "iri": "unrelated-root",
+                                    "term_type": "class",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        search_in_children = Mock()
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["term_category"] = "Process:activity,event"
+        response["category_search_complete"] = True
+        response["category_anchor_nodes"] = [
+            {"ontologyId": "obi", "iri": "process"}
+        ]
+        response["category_branch_nodes"] = [
+            {"ontologyId": "obi", "iri": "process"}
+        ]
+        response["known_terms"] = [
+            {"ontologyId": "obi", "iri": "process", "type": "class"},
+            {"ontologyId": "obi", "iri": "unrelated-root", "type": "class"},
+        ]
+        messages = []
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"search_in_children": search_in_children},
+        ):
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        search_in_children.assert_not_called()
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "Traverse only from the category anchors or their descendants."},
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_no_anchor_fallback_rejects_term_query(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "children",
+                        "function": {
+                            "name": "search_in_children",
+                            "arguments": json.dumps(
+                                {
+                                    "query": "assay",
+                                    "ontologyId": "obi",
+                                    "iri": "root",
+                                    "term_type": "class",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        search_in_children = Mock()
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["term_category"] = "Process:activity,event"
+        response["category_search_complete"] = True
+        response["known_terms"] = [
+            {"ontologyId": "obi", "iri": "root", "type": "class"}
+        ]
+        messages = []
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {"search_in_children": search_in_children},
+        ):
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        search_in_children.assert_not_called()
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {
+                "error": "Use the category or one of its synonyms until its subtree is found."
+            },
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_no_anchor_fallback_promotes_matching_child(self, call_openrouter):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "children",
+                        "function": {
+                            "name": "search_in_children",
+                            "arguments": json.dumps(
+                                {
+                                    "query": "activity",
+                                    "ontologyId": "obi",
+                                    "iri": "root",
+                                    "term_type": "class",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["term_category"] = "Process:activity,event"
+        response["category_search_complete"] = True
+        response["known_terms"] = [
+            {"ontologyId": "obi", "iri": "root", "type": "class"}
+        ]
+
+        with patch.dict(
+            agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+            {
+                "search_in_children": Mock(
+                    return_value={
+                        "label": "Activity",
+                        "ontologyId": "obi",
+                        "iri": "activity",
+                        "synonym": [],
+                        "type": "class",
+                    }
+                )
+            },
+        ):
+            agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertEqual(
+            response["category_anchor_nodes"],
+            [{"ontologyId": "obi", "iri": "activity"}],
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_requires_category_search_before_traversal(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "roots",
+                        "function": {
+                            "name": "get_roots",
+                            "arguments": '{"ontologyId": "obi", "type": "class"}',
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+        get_roots = Mock()
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["term_category"] = "Process:activity,event"
+        messages = []
+
+        with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, {"get_roots": get_roots}):
+            agent.run_term_request_or_search_agent_turn(messages, response)
+
+        get_roots.assert_not_called()
+        self.assertEqual(
+            json.loads(messages[-1]["content"]),
+            {"error": "Call find_category_terms before traversing the ontology."},
+        )
+
     @patch("ai_assist.term_request_search.agent.call_openrouter")
     def test_removes_batch_search_after_three_calls_in_both_phases(self, call_openrouter):
         call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
@@ -1143,7 +1470,12 @@ class AgentTests(TestCase):
 
 class AgentTaskTests(TestCase):
     def test_normalize_state_backfills_structural_search_state(self):
-        state = {"messages": [], "response": {}, "steps": 0}
+        state = {
+            "messages": [],
+            "response": {},
+            "steps": 0,
+            "input_text": "Term category: Process:activity,event",
+        }
 
         workflow_state.normalize_state(state)
 
@@ -1154,6 +1486,20 @@ class AgentTaskTests(TestCase):
         self.assertEqual(state["response"]["visited_root_pages"], [])
         self.assertEqual(state["response"]["visited_nodes"], [])
         self.assertEqual(state["response"]["visited_node_pages"], [])
+        self.assertEqual(state["response"]["term_category"], "Process:activity,event")
+
+    def test_traversal_context_keeps_category_visible(self):
+        response = workflow_state.new_response("term_request")
+        response["term_category"] = "Process:activity,event"
+        messages = []
+
+        structural_agent.update_traversal_context(messages, response)
+
+        self.assertIn(
+            "Requested term category: Process:activity,event",
+            messages[0]["content"],
+        )
+        self.assertIn("hard subtree constraint", messages[0]["content"])
 
     @patch("ai_assist.term_request_search.runner.run_conversation")
     @patch("ai_assist.term_request_search.runner.emit")

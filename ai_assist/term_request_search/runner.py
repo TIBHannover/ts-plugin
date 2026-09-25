@@ -34,6 +34,7 @@ from .state import (
     SERVER_MESSAGE_TYPE_PROGRESS,
     SERVER_MESSAGE_TYPE_QUESTION,
     SERVER_MESSAGE_TYPE_ONTOLOGY_SELECTION,
+    get_term_category,
     new_response,
     normalize_state,
 )
@@ -321,6 +322,7 @@ def start_term_request_phase(state):
         {"role": "user", "content": state["input_text"]},
     ]
     state["response"] = new_response("term_request")
+    state["response"]["term_category"] = get_term_category(state["input_text"])
     state["response"]["project_domain_provided"] = has_project_domain(
         state["input_text"]
     )
