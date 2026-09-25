@@ -1,12 +1,6 @@
 import base64
 import hashlib
 import secrets
-<<<<<<< HEAD
-
-from django.core.exceptions import BadRequest
-=======
-import time
->>>>>>> main
 from user_service.libs.decorators import (
     error_handler_decorator,
     authentication_required,
@@ -38,14 +32,11 @@ from django.conf import settings
 from django.core.exceptions import BadRequest, PermissionDenied
 from django.http import JsonResponse
 from user_service.libs.utils import make_hash
-<<<<<<< HEAD
 import requests
 from django.core.cache import cache
-=======
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.sessions.models import Session
->>>>>>> main
 
 
 def set_partitioned_cookie(response, key):
@@ -220,8 +211,6 @@ def login(request):
     return create_json_response({"issue": "auth is rejected"})
 
 
-@never_cache
-@require_http_methods(["POST"])
 @error_handler_decorator
 @require_http_methods(["GET"])
 def login_with_device_flow(request):
@@ -333,6 +322,8 @@ def submit_term_request(form_data, token):
     return None
 
 
+@never_cache
+@require_http_methods(["POST"])
 @error_handler_decorator
 @authentication_required
 def logout(request):
