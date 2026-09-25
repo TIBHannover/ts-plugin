@@ -71,13 +71,16 @@ class NoteModel(models.Model):
     @staticmethod
     def get_notes_by_conditions(conditions: dict) -> dict:
         client_ts = get_client_id_from_request()
+        owned_identity_ids = UserModel.get_owned_identity_ids(conditions["user_id"])
+        user = UserModel.objects.filter(id=conditions["user_id"]).first()
+        admin_roles = user.get_user_admin_roles() if user else None
         base_condition_set = _Q(active=True) & _Q(creator__client_ts=client_ts)
         ontology_condition_set = _Q(ontology_id=conditions["ontology_id"]) & _Q(
             pinned=conditions["pinned"]
         )
         parent_ontology_condition_set = _Q(parent_ontology_id=conditions["ontology_id"])
         visibility_condition_set = _Q(visibility__in=conditions["visibilities"]) | _Q(
-            creator_id=conditions["user_id"]
+            creator_id__in=owned_identity_ids
         )
 
         if conditions.get("semantic_component_type"):
@@ -114,6 +117,9 @@ class NoteModel(models.Model):
         for note in notes:
             comment_count = note.note_comments.filter(active=True).count()
             note_dict = note.to_dict()
+            note_dict["can_edit"] = note.can_edit(
+                user, owned_identity_ids, admin_roles
+            )
             note_dict["imported"] = (
                 False if conditions["ontology_id"] == note_dict["ontology_id"] else True
             )
@@ -134,16 +140,34 @@ class NoteModel(models.Model):
             return False
         if not note.active:
             return False
-        if note.creator.id != user_id:
+        if note.creator_id not in UserModel.get_owned_identity_ids(user_id):
             return False
         return True
 
     def can_visit(self, user_id: Union[int, str], is_guest: bool):
         visibilities = ["public"] if is_guest else ["public", "internal"]
-        if self.visibility not in visibilities and self.creator.id != user_id:
+        if (
+            self.visibility not in visibilities
+            and self.creator_id not in UserModel.get_owned_identity_ids(user_id)
+        ):
             return False
 
         return True
+
+    def can_edit(self, user, owned_identity_ids=None, admin_roles=None):
+        if not user:
+            return False
+        owned_identity_ids = owned_identity_ids or UserModel.get_owned_identity_ids(
+            user.id
+        )
+        if self.creator_id in owned_identity_ids:
+            return True
+        if self.visibility == "me":
+            return False
+        admin_roles = admin_roles or user.get_user_admin_roles()
+        return self.ontology_id in (
+            admin_roles["ontology"] + admin_roles["collection"]
+        ) or bool(admin_roles["system"])
 
     @staticmethod
     def get_visibility(note_id: Union[int, str]) -> bool:

@@ -100,7 +100,9 @@ def create(request):
     note_model_object.save()
     if not note_model_object.id:
         return HttpResponseServerError("Something went wrong.")
-    return create_json_response({"note_created": note_model_object.to_dict()})
+    note_dict = note_model_object.to_dict()
+    note_dict["can_edit"] = True
+    return create_json_response({"note_created": note_dict})
 
 
 @swagger_auto_schema(
@@ -159,22 +161,14 @@ def update(request):
     username = get_username_from_request()
     user = UserModel.get_by_username(username=username)
 
-    can_edit = False
-    for key, value in user.get_user_admin_roles().items():
-        if ontology_id in value:
-            can_edit = True
-            break
-        if key == "system" and len(value) > 0:
-            can_edit = True
-            break
-    if not can_edit:
-        can_edit = NoteModel.user_can_edit(note_id=noteId, user_id=user.id)
+    can_edit = note_to_update.can_edit(user)
     if not can_edit:
         raise PermissionDenied("Not Authorized")
 
     upadated_note = note_to_update.update_record(updates=updates)
-
-    return create_json_response({"note_updated": upadated_note.to_dict()})
+    note_dict = upadated_note.to_dict()
+    note_dict["can_edit"] = upadated_note.can_edit(user)
+    return create_json_response({"note_updated": note_dict})
 
 
 @swagger_auto_schema(
@@ -282,7 +276,7 @@ def get(request, note_id):
     if not note:
         raise Http404("Note does not exist")
 
-    can_edit = NoteModel.user_can_edit(note_id=note.id, user_id=user_id)
+    can_edit = note.can_edit(user)
     if not note.can_visit(user_id=user_id, is_guest=(user_id == -1)):
         raise Http404("Note does not exist")
 
@@ -452,18 +446,7 @@ def delete(request):
         note = NoteModel.objects.filter(id=object_id).first()
         if not note:
             raise Http404("Object not found")
-        can_edit = False
-        if note.visibility != "me":
-            # no admin can edit the note if it is a private note
-            for key, value in user.get_user_admin_roles().items():
-                if ontology_id in value:
-                    can_edit = True
-                    break
-                if key == "system" and len(value) > 0:
-                    can_edit = True
-                    break
-        if not can_edit:
-            can_edit = NoteModel.user_can_edit(note_id=object_id, user_id=user_id)
+        can_edit = note.can_edit(user)
         if not can_edit:
             raise PermissionDenied("Not Authorized")
         note.delete()
@@ -537,4 +520,6 @@ def update_pin(request):
         return HttpResponseBadRequest("Bad request: Private notes cannot be pinned.")
 
     note_to_update.update_record(updates=updates)
-    return create_json_response({"note_pinned": note_to_update.to_dict()})
+    note_dict = note_to_update.to_dict()
+    note_dict["can_edit"] = note_to_update.can_edit(user)
+    return create_json_response({"note_pinned": note_dict})

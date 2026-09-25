@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from typing import Optional, Union
 from user_service.middlewares.client_id import get_client_id_from_request
 from datetime import datetime as _time
@@ -7,6 +8,7 @@ from django.contrib.auth.hashers import make_password
 
 
 ALLOWED_ROLES = ["admin"]
+MAX_API_KEY_OWNER_DEPTH = 10
 
 # TODO: delete user mechanism
 
@@ -77,6 +79,63 @@ class UserModel(models.Model):
 
         return user
 
+    @staticmethod
+    def get_valid_api_key_user(api_key_hash: str):
+        if "apikey" not in settings.AUTH_PROVIDERS:
+            return None
+        api_key_user = UserModel.objects.filter(
+            api_key=api_key_hash, auth_provider="apikey"
+        ).first()
+        user = api_key_user
+        visited = set()
+
+        while user and user.auth_provider == "apikey":
+            if (
+                user.id in visited
+                or not user.is_active
+                or user.is_blocked
+                or user.client_ts not in settings.CLIENT_TERMINOLOGY_SERVICES
+                or (user.expires_at and user.expires_at <= timezone.now())
+            ):
+                return None
+            visited.add(user.id)
+            user = user.owner
+
+        if (
+            not user
+            or not user.is_active
+            or user.is_blocked
+            or user.auth_provider not in settings.AUTH_PROVIDERS
+            or user.client_ts not in settings.CLIENT_TERMINOLOGY_SERVICES
+        ):
+            return None
+        return api_key_user
+
+    def get_api_key_owner_depth(self):
+        user = self
+        visited = set()
+        depth = 0
+        while user and user.auth_provider == "apikey":
+            if user.id in visited:
+                return MAX_API_KEY_OWNER_DEPTH + 1
+            visited.add(user.id)
+            depth += 1
+            user = user.owner
+        return depth
+
+    @staticmethod
+    def get_owned_identity_ids(user_id):
+        identity_ids = {user_id}
+        owner_ids = {user_id}
+        while owner_ids:
+            owner_ids = set(
+                UserModel.objects.filter(owner_id__in=owner_ids).values_list(
+                    "id", flat=True
+                )
+            ) - identity_ids
+            identity_ids.update(owner_ids)
+        return identity_ids
+
     def get_user_admin_roles(self):
         roles = self.user_roles.all()
         result = {"system": [], "collection": [], "ontology": []}
@@ -144,6 +203,20 @@ class UserModel(models.Model):
         if users:
             return [user.to_dict() for user in users]
         return []
+
+
+class OAuthLoginTransaction(models.Model):
+    state_hash = models.CharField(max_length=64, unique=True)
+    session_key_hash = models.CharField(max_length=64)
+    auth_provider = models.CharField(max_length=32)
+    client_ts_id = models.CharField(max_length=64)
+    code_verifier = models.CharField(max_length=128, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "oauth_login_transactions"
+        indexes = [models.Index(fields=["session_key_hash", "expires_at"])]
 
 
 class RoleModel(models.Model):

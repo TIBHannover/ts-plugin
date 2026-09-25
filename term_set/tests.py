@@ -128,6 +128,32 @@ class TestTermSet(BaseTest):
         self.assertEqual("updated term set", res.json()["_result"]["term_set"]["name"])
         self.assertEqual(1, len(res.json()["_result"]["term_set"]["terms"]))
 
+    def test_api_key_owner_can_access_and_update_termset(self):
+        api_key_user = TestHelper.createApiKeyUser(
+            self.gitHubUser, "API user", "", "API key"
+        )
+        term_set = TestHelper.create_term_set(
+            api_key_user, "API term set", "me", "", [self.term1]
+        )
+
+        get_response = self.client.get(
+            self.get_url + term_set["id"] + "/",
+            headers=self.github_request_headers,
+            content_type="application/json",
+        )
+        term_set["name"] = "Updated API term set"
+        update_response = self.client.put(
+            self.update_url + term_set["id"] + "/",
+            headers=self.github_request_headers,
+            data=json.dumps(term_set),
+            content_type="application/json",
+        )
+
+        self.assertEqual(get_response.status_code, 200)
+        self.assertTrue(get_response.json()["_result"]["term_set"]["can_edit"])
+        self.assertEqual(update_response.status_code, 200)
+        self.assertTrue(update_response.json()["_result"]["term_set"]["can_edit"])
+
     def test_termset_update_should_fail_for_non_owner(self):
         # owner is github user
         headers = self.orcid_request_headers

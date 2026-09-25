@@ -18,6 +18,7 @@ class TestLogin(BaseTest):
         self.github_code = settings.GITHUB_LOGIN_CODE
         self.orcid_code = settings.ORCID_LOGIN_CODE
         self.login_url = "/user/login/"
+        self.login_state_url = "/user/login/state/"
         self.validation_url = "/user/validate_login/"
         self.test_github_username = settings.GITHUB_LOGIN_USERNAME
         self.test_orcid_username = settings.ORCID_LOGIN_USERNAME
@@ -28,7 +29,7 @@ class TestLogin(BaseTest):
             "X-TS-Frontend-Id": self.client_ts_id,
         }
 
-        login_response = self.client.get(self.login_url, headers=headers)
+        login_response = self.client.post(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn("auth provider is not clear", login_response.content.decode())
 
@@ -39,7 +40,7 @@ class TestLogin(BaseTest):
             "X-TS-Frontend-Id": self.client_ts_id,
         }
 
-        login_response = self.client.get(self.login_url, headers=headers)
+        login_response = self.client.post(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn("auth provider is not clear", login_response.content.decode())
 
@@ -49,7 +50,7 @@ class TestLogin(BaseTest):
             "X-TS-Auth-Provider": "github",
         }
 
-        login_response = self.client.get(self.login_url, headers=headers)
+        login_response = self.client.post(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn(
             "Client application is not allowed to use this service.",
@@ -63,7 +64,7 @@ class TestLogin(BaseTest):
             "X-TS-Frontend-Id": "some_other_client_id",
         }
 
-        login_response = self.client.get(self.login_url, headers=headers)
+        login_response = self.client.post(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 401)
         self.assertIn(
             "Client application is not allowed to use this service.",
@@ -85,8 +86,20 @@ class TestLogin(BaseTest):
             "X-TS-Frontend-Id": self.client_ts_id,
             "Origin": "https://frontend.test",
         }
-        login_response = self.client.get(self.login_url, headers=headers)
+        state = "a" * 64
+        state_response = self.client.get(
+            self.login_state_url,
+            headers={
+                "X-TS-Auth-Provider": "github",
+                "X-TS-Frontend-Id": self.client_ts_id,
+                "X-TS-OAuth-State": state,
+            },
+        )
+        self.assertEqual(state_response.status_code, 200)
+        headers["X-TS-OAuth-State"] = state
+        login_response = self.client.post(self.login_url, headers=headers)
         self.assertEqual(login_response.status_code, 200)
+        self.assertIn("no-store", login_response["Cache-Control"])
         result = login_response.json().get("_result")
         self.assertNotIn("jwt", result)
         self.assertNotIn("token", result)
@@ -116,6 +129,36 @@ class TestLogin(BaseTest):
         ).first()
         self.assertIsNot(db_user, None)
         self.assertIsNot(db_user.id, None)
+
+    def test_login_should_fail_with_an_invalid_state(self):
+        response = self.client.post(
+            self.login_url,
+            headers={
+                "X-TS-Auth-APP-Code": self.github_code,
+                "X-TS-Auth-Provider": "github",
+                "X-TS-Frontend-Id": self.client_ts_id,
+                "X-TS-OAuth-State": "a" * 64,
+            },
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("OAuth login transaction is invalid", response.content.decode())
+
+    def test_login_should_reject_get_requests(self):
+        response = self.client.get(self.login_url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_login_state_should_return_pkce_challenge(self):
+        response = self.client.get(
+            self.login_state_url,
+            headers={
+                "X-TS-Auth-Provider": "github",
+                "X-TS-Frontend-Id": self.client_ts_id,
+                "X-TS-OAuth-State": "a" * 64,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["_result"]["code_challenge"])
+        self.assertIn("sessionid", response.cookies)
 
     # def test_orcid_login_should_success(self):
     #     headers = {

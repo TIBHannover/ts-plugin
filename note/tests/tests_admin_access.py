@@ -60,6 +60,20 @@ class TestAdminAccess(BaseTest):
             response.json()["_result"]["note_updated"]["title"], "Edited internal"
         )
 
+    def test_note_update_should_return_saved_edit_permission(self):
+        post_data = copy.copy(self.edit_internal_note_data)
+        post_data["visibility"] = "me"
+
+        response = self.client.put(
+            "/note/update/",
+            headers=self.github_request_headers,
+            data=json.dumps(post_data),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["_result"]["note_updated"]["can_edit"])
+
     def test_note_comment_admin_edit_should_success(self):
         headers = copy.copy(self.github_request_headers)
         post_data = {

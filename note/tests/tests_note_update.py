@@ -81,6 +81,23 @@ class TestNoteUpdate(BaseTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["_result"]["note_updated"]["title"], "Edited")
 
+    def test_api_key_owner_can_update_note(self):
+        api_key_user = TestHelper.createApiKeyUser(
+            self.gitHubUser, "API user", "", "API key"
+        )
+        note = TestHelper.createNote(api_key_user, "me")
+        post_data = copy.copy(self.edit_note_data)
+        post_data["noteId"] = note.id
+
+        response = self.client.put(
+            self.note_update_url,
+            headers=self.github_request_headers,
+            data=json.dumps(post_data),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_note_update_should_success_for_removing_parent_ontology(self):
         headers = copy.copy(self.github_request_headers)
         response = self.client.put(

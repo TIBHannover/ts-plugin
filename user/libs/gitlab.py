@@ -4,7 +4,7 @@ from django.conf import settings
 
 class GitLabLib:
     @staticmethod
-    def authenticate(code, client_ts_id=None):
+    def authenticate(code, client_ts_id=None, code_verifier=None):
         redirect_url = settings.DEFAULT_FRONTEND_REDIRECT_URL
         if client_ts_id and client_ts_id == "general":
             redirect_url = settings.GENERAL_FRONTEND_REDIRECT_URL
@@ -19,6 +19,8 @@ class GitLabLib:
             "redirect_uri": redirect_url,
             "grant_type": "authorization_code",
         }
+        if code_verifier:
+            params["code_verifier"] = code_verifier
         resp = requests.post(settings.GITLAB_TOKEN_URL, params=params)
         if resp.status_code == 200:
             resp = resp.json()

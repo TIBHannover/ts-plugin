@@ -64,21 +64,21 @@ services:
     networks:
       - microservice
 
-  # celery_beat:
-  #   container_name: celery_beat
-  #   build:
-  #     context: .
-  #     dockerfile: docker/Dockerfile
-  #   command: celery -A user_service beat --loglevel=error --scheduler django_celery_beat.schedulers:DatabaseScheduler
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_started
-  #   volumes:
-  #     - service_logs:/home/ts-app/logs
-  #   networks:
-  #     - microservice
+  celery_beat:
+    container_name: celery_beat
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A user_service beat --loglevel=error
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - service_logs:/home/ts-app/logs
+    networks:
+      - microservice
 
   nginx:
     container_name: nginx

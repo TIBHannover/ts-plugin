@@ -9,7 +9,11 @@ PORT="${PORT:-8000}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
 export DB_NAME="${DB_NAME:-ts_db}"
+<<<<<<< HEAD
 export DB_USER="${DB_USER:-ts}"
+=======
+export DB_USER="${DB_USER:-postgres}"
+>>>>>>> main
 export DB_PASSWORD="${DB_PASSWORD:-1234}"
 export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
@@ -33,31 +37,23 @@ require_cmd() {
   }
 }
 
+postgres_is_ready() {
+  "$PYTHON" -c 'import os; os.environ.setdefault("DJANGO_SETTINGS_MODULE", "user_service.settings"); os.environ.setdefault("PGCONNECT_TIMEOUT", "1"); from django.db import connection; connection.ensure_connection(); connection.close()' >/dev/null 2>&1
+}
+
 wait_for_postgres() {
-  if command -v pg_isready >/dev/null 2>&1; then
-    until PGPASSWORD="$DB_PASSWORD" pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; do
-      echo "Waiting for Postgres at ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
-      sleep 1
-    done
-  fi
+  until postgres_is_ready; do
+    echo "Waiting for Postgres at ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
+    sleep 1
+  done
+}
 
-  if command -v psql >/dev/null 2>&1; then
-    if ! output="$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "select 1;" 2>&1 >/dev/null)"; then
-      echo "Cannot connect to Postgres at ${DB_HOST}:${DB_PORT}/${DB_NAME} as ${DB_USER}." >&2
-      echo "$output" >&2
-      exit 1
-    fi
-
-    version="$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc "show server_version_num;")"
-    if [ "$version" -lt 140000 ]; then
-      echo "PostgreSQL 14 or later is required; found $(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc "show server_version;")." >&2
-      exit 1
-    fi
-  fi
+redis_is_ready() {
+  "$PYTHON" -c 'import os; from redis import Redis; Redis.from_url(os.environ["CELERY_BROKER_URL"], socket_connect_timeout=1, socket_timeout=1).ping()' >/dev/null 2>&1
 }
 
 start_redis() {
-  if command -v redis-cli >/dev/null 2>&1 && redis-cli -p "$REDIS_PORT" ping >/dev/null 2>&1; then
+  if redis_is_ready; then
     return
   fi
 
@@ -65,11 +61,18 @@ start_redis() {
   # redis-server --port "$REDIS_PORT" --save "" --appendonly no &
   # pids+=("$!")
 
+<<<<<<< HEAD
   # require_cmd redis-cli
   # until redis-cli -p "$REDIS_PORT" ping >/dev/null 2>&1; do
   #   echo "Waiting for Redis on port ${REDIS_PORT}..."
   #   sleep 1
   # done
+=======
+  until redis_is_ready; do
+    echo "Waiting for Redis on port ${REDIS_PORT}..."
+    sleep 1
+  done
+>>>>>>> main
 }
 
 require_cmd "$PYTHON"
@@ -81,9 +84,13 @@ start_redis
 "$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" &
 pids+=("$!")
 
+<<<<<<< HEAD
 # "$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &
 # pids+=("$!")
 "$PYTHON" -m celery -A user_service worker --loglevel=error --pool=solo &
+=======
+"$PYTHON" -m celery -A user_service worker --loglevel=error --pool=solo --concurrency=1 &
+>>>>>>> main
 pids+=("$!")
 
 echo "Django is running at http://localhost:${PORT}"

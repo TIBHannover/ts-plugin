@@ -1,13 +1,1 @@
-
-# Overview
-
-Stack:
-- Django
-- PostgreSQL
-
-
-Client types:
-- Web
-- API 
-
-
+- To run the project locally and for test, always use the running script. Do not use the docker  composer or file.

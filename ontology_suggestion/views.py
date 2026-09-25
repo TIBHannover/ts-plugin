@@ -4,6 +4,7 @@ from user_service.libs.decorators import (
     authentication_required,
 )
 import requests
+from user_service.libs.safe_http import SafeRequestError, safe_head
 import urllib.parse
 from .libs.shape_test import test as test_onto_shap
 from django.views.decorators.http import require_http_methods
@@ -125,8 +126,8 @@ def check_onto_purl_is_valid(request):
     data = request.GET
     purl = data["purl"]
     try:
-        response = requests.head(purl, allow_redirects=True, timeout=10)
-    except:
+        response = safe_head(purl)
+    except SafeRequestError:
         return create_json_response(
             {"valid": False, "reason": "PURL is not a resolvable URL"}
         )
@@ -135,7 +136,7 @@ def check_onto_purl_is_valid(request):
         return create_json_response(
             {"valid": False, "reason": "PURL is not a resolvable URL"}
         )
-    content_type = response.headers.get("Content-Type")
+    content_type = response.headers.get("Content-Type", "")
     allowed_types = [
         "text/turtle",
         "application/x-turtle",

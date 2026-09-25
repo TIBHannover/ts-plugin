@@ -42,14 +42,17 @@ class TermSetModel(models.Model):
         super().save(**kwargs)
 
     def can_visit(self, user_id: Union[int, str]) -> bool:
-        if self.visibility == "me" and self.creator.id != user_id:
+        if (
+            self.visibility == "me"
+            and self.creator_id not in UserModel.get_owned_identity_ids(user_id)
+        ):
             return False
         if self.visibility == "internal" and not user_id:
             return False
         return True
 
     def can_edit(self, user_id: Union[int, str]) -> bool:
-        return self.creator.id == user_id
+        return self.creator_id in UserModel.get_owned_identity_ids(user_id)
 
     def __str__(self) -> str:
         return f"<Term_set {self.id}>"

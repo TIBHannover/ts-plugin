@@ -4,7 +4,7 @@ from django.conf import settings
 
 class GithubLib:
     @staticmethod
-    def authenticate(code, client_ts_id=None):
+    def authenticate(code, client_ts_id=None, code_verifier=None):
         client_id = settings.DEFAULT_GITHUB_CLIENT_ID
         client_secret = settings.DEFAULT_GITHUB_CLIENT_SECRET
         redirect_url = settings.DEFAULT_FRONTEND_REDIRECT_URL
@@ -27,6 +27,8 @@ class GithubLib:
             "client_secret": client_secret,
             "redirect_uri": redirect_url,
         }
+        if code_verifier:
+            data["code_verifier"] = code_verifier
         resp = requests.post(settings.GITHUB_TOKEN_URL, data=data)
         if resp.status_code == 200 and "access_token=" in resp.text:
             token = resp.text.split("access_token=")[1]

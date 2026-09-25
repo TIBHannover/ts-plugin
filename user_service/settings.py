@@ -141,6 +141,7 @@ CORS_ALLOW_HEADERS = (
     "X-TS-Frontend-Id",
     "X-TS-Auth-Provider",
     "X-TS-Auth-APP-Code",
+    "X-TS-OAuth-State",
     "X-TS-Orcid-Id",
     "X-TS-User-Token",
     "X-TS-User-Name",
@@ -176,6 +177,7 @@ INSTALLED_APPS = [
     "django_celery_beat",
     "ai_assist",
 ]
+AUTH_PROVIDERS_WITH_PKCE = ["github", "gitlab", "orcid"]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -290,6 +292,12 @@ CELERY_BEAT_SCHEDULE = {
     "harvest-ontologies-daily": {
         "task": "ai_assist.tasks.harvest_ontologies_task",
         "schedule": crontab(hour=0, minute=0),
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-expired-oauth-login-transactions": {
+        "task": "user.tasks.cleanup_expired_oauth_login_transactions",
+        "schedule": 300,
     },
 }
 
