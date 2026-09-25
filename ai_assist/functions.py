@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
 from functools import partial
 import logging
 import requests
@@ -14,6 +15,8 @@ TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
 
 DEFNITION_MAX_LENGTH = 300
 REQUEST_TIMEOUT = (3.05, 10)
+CHILD_SEARCH_PAGE_SIZE = 1000
+CHILD_SEARCH_MAX_PAGES = 20
 
 
 def search(
@@ -212,6 +215,89 @@ def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
         return f"Error: no children found for {iri}"
 
 
+def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
+    try:
+        if term_type not in ("class", "property"):
+            return "Error: type of a term has to be either class or property."
+        if not isinstance(query, str) or not query.strip():
+            return "Error: query must be a non-empty string"
+
+        entity_type = "classes" if term_type == "class" else "properties"
+        encoded_iri = urllib.parse.quote(iri, safe="")
+        url = (
+            f"{TS_BASE_URL}ontologies/{ontologyId}/{entity_type}/{encoded_iri}/"
+            "hierarchicalChildren"
+        )
+        normalized_query = query.casefold().strip()
+
+        def score(child):
+            synonyms = child.get("synonym", [])
+            if isinstance(synonyms, str):
+                synonyms = [synonyms]
+            values = [convert_to_str(child.get("label", "")), *synonyms]
+            scores = (
+                (
+                    1.0
+                    if value.casefold().strip() == normalized_query
+                    else SequenceMatcher(
+                        None, normalized_query, value.casefold().strip()
+                    ).ratio()
+                )
+                for value in values
+                if isinstance(value, str) and value.strip()
+            )
+            return max(scores, default=0)
+
+        match = None
+        match_score = -1
+        page = 0
+        total_pages = 1
+        while page < total_pages:
+            response = requests.get(
+                url,
+                params={
+                    "page": page,
+                    "size": CHILD_SEARCH_PAGE_SIZE,
+                    "lang": "en",
+                    "includeObsoleteEntities": "false",
+                },
+                timeout=REQUEST_TIMEOUT,
+            ).json()
+            if page == 0:
+                total_pages = response.get("page", {}).get("totalPages", 1)
+                if (
+                    isinstance(total_pages, bool)
+                    or not isinstance(total_pages, int)
+                    or total_pages < 1
+                ):
+                    return f"Error: invalid child pagination for {iri}"
+                if total_pages > CHILD_SEARCH_MAX_PAGES:
+                    return f"Error: too many children to search safely for {iri}"
+            children = response.get("elements", [])
+            if not isinstance(children, list) or len(children) > CHILD_SEARCH_PAGE_SIZE:
+                return f"Error: invalid child page for {iri}"
+            for child in children:
+                child_score = score(child)
+                if child_score > match_score:
+                    match = child
+                    match_score = child_score
+            page += 1
+        if match is None:
+            return f"Error: no children found for {iri}"
+        definition = convert_to_str(match.get("definition", ""))
+        return {
+            "label": convert_to_str(match["label"]),
+            "iri": match["iri"],
+            "definition": definition[:DEFNITION_MAX_LENGTH],
+            "ontologyId": match["ontologyId"],
+            "synonym": match.get("synonym", []),
+            "type": get_term_type(match),
+        }
+    except Exception:
+        logger.exception("Unable to search children for %s in %s", iri, ontologyId)
+        return f"Error: no children found for {iri}"
+
+
 def get_roots(ontologyId: str, type: str, page: int = 0):
     try:
         if type != "class" and type != "property":
@@ -382,26 +468,21 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_term_children",
-            "description": "Get one page of direct child terms for a class or property. Each page contains at most 10 children, so increment page when more results may be needed. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
+            "name": "search_in_children",
+            "description": "Search all direct children of a class or property locally and return the closest matching child. The upstream API does not support child search. The result includes label, IRI, definition, ontology ID, synonyms, and term type.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "iri": {"type": "string"},
                     "ontologyId": {"type": "string"},
+                    "query": {"type": "string"},
                     "term_type": {
                         "type": "string",
                         "enum": ["class", "property"],
                         "description": "Type of the parent term, as returned by another term tool.",
                     },
-                    "page": {
-                        "type": "integer",
-                        "description": "Zero-based page number. Page size is fixed at 10 results.",
-                        "minimum": 0,
-                        "default": 0,
-                    },
                 },
-                "required": ["iri", "ontologyId", "term_type"],
+                "required": ["query", "iri", "ontologyId", "term_type"],
             },
         },
     },

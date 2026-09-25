@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
+import logging
 import os
 from typing import Any
 
@@ -14,6 +15,8 @@ from .functions import (
 )
 from .state import TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
 
+logger = logging.getLogger(__name__)
+
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["LLM_API_KEY"],
@@ -27,7 +30,7 @@ FUNCTION_LABELS = {
     "batch_search": "Searching terminology",
     "search_under_term": "Searching related terms",
     "get_term_detail": "Checking term details",
-    "get_term_children": "Checking child terms",
+    "search_in_children": "Searching child terms",
     "get_roots": "Checking root terms",
     "get_individuals": "Checking individuals",
     "get_ontology_detail": "Checking ontology details",
@@ -82,10 +85,14 @@ def _tool_allowed(fn_name: str, phase: str, response: dict[str, Any]) -> bool:
             fn_name == "batch_search"
             and response["search_call_count"] < TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
         )
+    if response.get("pending_ontology_rejection_decision"):
+        return False
+    if response.get("allow_ontology_reselection"):
+        return fn_name == "ontologies_list"
     if not response["ontologies_list_call_count"]:
         return fn_name == "ontologies_list"
     if response["available_ontology_ids"] and not response["selected_ontology_ids"]:
-        return fn_name == "get_roots"
+        return False
     return fn_name in TERM_REQUEST_TOOL_NAMES - {"ontologies_list"} or (
         fn_name == "ontologies_list" and response["allow_ontology_reselection"]
     )
@@ -252,6 +259,35 @@ def validate_term_request_agent_response(
     return True, json.dumps(response), ""
 
 
+def validate_ontology_options(content, available_ontologies, rejected_ontology_ids=None):
+    try:
+        response = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return False, [], "Return only a valid JSON object with five ontology IDs."
+
+    ontology_ids = response.get("ontologies") if isinstance(response, dict) else None
+    rejected = set(rejected_ontology_ids or [])
+    available = {
+        ontology["ontologyId"]: ontology
+        for ontology in available_ontologies
+        if isinstance(ontology, dict)
+        and isinstance(ontology.get("ontologyId"), str)
+        and ontology["ontologyId"] not in rejected
+    }
+    expected_count = min(5, len(available))
+    if (
+        not isinstance(ontology_ids, list)
+        or len(ontology_ids) != expected_count
+        or len(set(ontology_ids)) != len(ontology_ids)
+        or not all(isinstance(ontology_id, str) for ontology_id in ontology_ids)
+    ):
+        return False, [], f"Return exactly {expected_count} distinct ontology IDs."
+
+    if any(ontology_id not in available for ontology_id in ontology_ids):
+        return False, [], "Use only non-rejected ontology IDs returned by ontologies_list."
+    return True, [available[ontology_id] for ontology_id in ontology_ids], ""
+
+
 def _report_progress(response, message, progress_callback=None):
     response["progress_feedback"] = message
     if progress_callback:
@@ -259,29 +295,6 @@ def _report_progress(response, message, progress_callback=None):
         progress_callback(message)
     else:
         response["progress_feedbacks"].append(message)
-
-
-def _require_ontology_selection(messages, response):
-    response["ontology_selection_failure_count"] = (
-        response.get("ontology_selection_failure_count", 0) + 1
-    )
-    if response["ontology_selection_failure_count"] > MAX_ONTOLOGY_SELECTION_FAILURES:
-        response["candidates"] = []
-        response["error"] = "Assistant could not select an ontology from the available metadata."
-        response["is_final"] = True
-        return
-    response["force_tool_call"] = True
-    messages.append(
-        {
-            "role": "user",
-            "content": (
-                "Select the closest ontology from the available metadata using the term "
-                "label and definition as the primary evidence. Treat the provided domain, "
-                "if any, only as an optional low-weight hint. Call get_roots with that "
-                "ontologyId now."
-            ),
-        }
-    )
 
 
 def _require_ontology_list(messages, response):
@@ -318,12 +331,14 @@ def run_term_request_or_search_agent_turn(
     else:
         structural_agent.initialize_state(response)
         structural_agent.update_traversal_context(messages, response)
-        available_tools = structural_agent.available_tools(
-            TERM_REQUEST_SEARCH_TOOLS,
-            response["ontologies_list_call_count"],
-            response["allow_ontology_reselection"],
-            bool(response["available_ontology_ids"])
-            and not response["selected_ontology_ids"],
+        available_tools = [] if response["pending_ontology_rejection_decision"] else (
+            structural_agent.available_tools(
+                TERM_REQUEST_SEARCH_TOOLS,
+                response["ontologies_list_call_count"],
+                response["allow_ontology_reselection"],
+                bool(response["available_ontology_ids"])
+                and not response["selected_ontology_ids"],
+            )
         )
     message, usage = call_openrouter(
         messages, available_tools, response.get("force_tool_call", False)
@@ -343,6 +358,34 @@ def run_term_request_or_search_agent_turn(
             assistant_response = json.loads(content)
         except (TypeError, json.JSONDecodeError):
             assistant_response = {}
+
+        if phase == "term_request" and response["pending_ontology_rejection_decision"]:
+            ontology_rejected = assistant_response.get("ontology_rejected")
+            if not isinstance(ontology_rejected, bool):
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Return only JSON with ontology_rejected set to true or false. "
+                            "Do not call a tool."
+                        ),
+                    }
+                )
+                return
+            response["pending_ontology_rejection_decision"] = False
+            response["allow_ontology_reselection"] = ontology_rejected
+            response["force_tool_call"] = ontology_rejected
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Call ontologies_list now and rank five new ontology options."
+                        if ontology_rejected
+                        else "Keep the selected ontology and find different parent candidates within it."
+                    ),
+                }
+            )
+            return
 
         # A question pauses the worker so the next WebSocket user_message becomes
         # part of this same LLM conversation instead of starting another run.
@@ -442,7 +485,20 @@ def run_term_request_or_search_agent_turn(
             and response["available_ontology_ids"]
             and not response["selected_ontology_ids"]
         ):
-            _require_ontology_selection(messages, response)
+            is_valid, options, feedback = validate_ontology_options(
+                content,
+                response["available_ontologies"],
+                response["rejected_ontology_ids"],
+            )
+            if is_valid:
+                if not options:
+                    response["error"] = "No non-rejected ontologies are available."
+                    response["is_final"] = True
+                    return
+                response["ontology_options"] = options
+                response["needs_ontology_selection"] = True
+                return
+            messages.append({"role": "user", "content": feedback})
             return
 
         if phase == "search":
@@ -470,11 +526,6 @@ def run_term_request_or_search_agent_turn(
         )
         return
 
-    ontology_selection_required = (
-        phase == "term_request"
-        and bool(response["available_ontology_ids"])
-        and not response["selected_ontology_ids"]
-    )
     for tool_call in tool_calls:
         response["progress_feedback"] = ""
         fn_name = tool_call["function"]["name"]
@@ -525,8 +576,9 @@ def run_term_request_or_search_agent_turn(
                     result = structural_agent.execute_tool(
                         fn_name, args, response, TERM_REQUEST_SEARCH_FUNCTIONS
                     )
-            except Exception as error:
-                result = {"error": str(error)}
+            except Exception:
+                logger.exception("AI assist tool %s failed", fn_name)
+                result = {"error": "Unable to complete the ontology lookup."}
 
             if is_reselection:
                 updated_progress = "Re-evaluating ontologies based on your feedback"
@@ -558,6 +610,3 @@ def run_term_request_or_search_agent_turn(
                 "tool_call_id": tool_call["id"],
             }
         )
-
-    if ontology_selection_required and not response["selected_ontology_ids"]:
-        _require_ontology_selection(messages, response)

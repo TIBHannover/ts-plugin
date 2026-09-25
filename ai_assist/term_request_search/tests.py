@@ -111,6 +111,49 @@ class TermDetailTests(SimpleTestCase):
         self.assertEqual(result, f"Error: no results found for {iri}")
         exception.assert_called_once()
 
+
+class SearchInChildrenTests(SimpleTestCase):
+    @patch("ai_assist.functions.requests.get")
+    def test_returns_best_local_child_match(self, get):
+        get.return_value.json.return_value = {
+            "elements": [
+                {
+                    "label": "biological process",
+                    "iri": "process",
+                    "ontologyId": "obi",
+                    "type": ["class"],
+                },
+                {
+                    "label": "measurement assay",
+                    "iri": "assay",
+                    "ontologyId": "obi",
+                    "synonym": ["measuring assay"],
+                    "type": ["class"],
+                },
+            ]
+        }
+
+        result = shared_functions.search_in_children(
+            "measurement assay", "root", "obi", "class"
+        )
+
+        self.assertEqual(result["iri"], "assay")
+        self.assertNotIn("search", get.call_args.kwargs["params"])
+
+    @patch("ai_assist.functions.requests.get")
+    def test_rejects_unbounded_child_pagination(self, get):
+        get.return_value.json.return_value = {
+            "elements": [],
+            "page": {"totalPages": shared_functions.CHILD_SEARCH_MAX_PAGES + 1},
+        }
+
+        result = shared_functions.search_in_children(
+            "measurement assay", "root", "obi", "class"
+        )
+
+        self.assertEqual(result, "Error: too many children to search safely for root")
+        get.assert_called_once()
+
 class OntologiesListTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -453,7 +496,7 @@ class AgentTests(TestCase):
         ]
         self.assertNotIn("ontologies_list", tool_names)
         self.assertIn("get_roots", tool_names)
-        self.assertIn("get_term_children", tool_names)
+        self.assertIn("search_in_children", tool_names)
         self.assertNotIn("batch_search", tool_names)
         self.assertNotIn("search_under_term", tool_names)
         self.assertNotIn("get_individuals", tool_names)
@@ -471,8 +514,9 @@ class AgentTests(TestCase):
         self.assertEqual(response["error"], "Assistant could not retrieve ontology metadata.")
         self.assertTrue(call_openrouter.call_args_list[1].args[2])
 
+    @patch("ai_assist.term_request_search.agent.logger.exception")
     @patch("ai_assist.term_request_search.agent.call_openrouter")
-    def test_term_request_finishes_when_ontology_list_fails(self, call_openrouter):
+    def test_term_request_finishes_when_ontology_list_fails(self, call_openrouter, exception):
         call_openrouter.return_value = (
             {
                 "content": "",
@@ -494,7 +538,147 @@ class AgentTests(TestCase):
             agent.run_term_request_or_search_agent_turn([], response)
 
         self.assertTrue(response["is_final"])
-        self.assertEqual(response["error"], "metadata unavailable")
+        self.assertEqual(response["error"], "Unable to complete the ontology lookup.")
+        self.assertNotIn("metadata unavailable", response["progress_feedbacks"])
+        exception.assert_called_once_with("AI assist tool %s failed", "ontologies_list")
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_term_request_pauses_with_five_ranked_ontologies(self, call_openrouter):
+        ontologies = [
+            {
+                "ontologyId": str(index),
+                "label": f"Ontology {index}",
+                "definition": f"Definition {index}",
+            }
+            for index in range(6)
+        ]
+        call_openrouter.return_value = (
+            {"content": json.dumps({"ontologies": ["2", "1", "4", "0", "3"]})},
+            {},
+        )
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = [item["ontologyId"] for item in ontologies]
+        response["available_ontologies"] = ontologies
+
+        agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertTrue(response["needs_ontology_selection"])
+        self.assertEqual(
+            [item["ontologyId"] for item in response["ontology_options"]],
+            ["2", "1", "4", "0", "3"],
+        )
+        self.assertEqual(call_openrouter.call_args.args[1], [])
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_generic_rejection_feedback_cannot_enable_ontology_list(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = (
+            {"content": '{"ontology_rejected": false}'},
+            {},
+        )
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["pending_ontology_rejection_decision"] = True
+
+        agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertEqual(call_openrouter.call_args.args[1], [])
+        self.assertFalse(response["allow_ontology_reselection"])
+        self.assertEqual(response["selected_ontology_ids"], ["obi"])
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_explicit_ontology_rejection_enables_only_ontology_list(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = (
+            {"content": '{"ontology_rejected": true}'},
+            {},
+        )
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["obi"]
+        response["selected_ontology_ids"] = ["obi"]
+        response["pending_ontology_rejection_decision"] = True
+
+        agent.run_term_request_or_search_agent_turn([], response)
+        call_openrouter.return_value = ({"content": "{}"}, {})
+        agent.run_term_request_or_search_agent_turn([], response)
+
+        self.assertEqual(
+            [tool["function"]["name"] for tool in call_openrouter.call_args.args[1]],
+            ["ontologies_list"],
+        )
+
+    @patch("ai_assist.term_request_search.agent.call_openrouter")
+    def test_injected_tool_calls_cannot_bypass_rejection_protocol(
+        self, call_openrouter
+    ):
+        call_openrouter.return_value = (
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "roots",
+                        "function": {
+                            "name": "get_roots",
+                            "arguments": '{"ontologyId": "obi", "type": "class"}',
+                        },
+                    }
+                ],
+            },
+            {},
+        )
+
+        for state_field in (
+            "pending_ontology_rejection_decision",
+            "allow_ontology_reselection",
+        ):
+            with self.subTest(state_field=state_field):
+                get_roots = Mock()
+                response = workflow_state.new_response("term_request")
+                response["ontologies_list_call_count"] = 1
+                response["available_ontology_ids"] = ["obi"]
+                response["selected_ontology_ids"] = ["obi"]
+                response[state_field] = True
+                messages = []
+
+                with patch.dict(
+                    agent.TERM_REQUEST_SEARCH_FUNCTIONS,
+                    {"get_roots": get_roots},
+                ):
+                    agent.run_term_request_or_search_agent_turn(messages, response)
+
+                get_roots.assert_not_called()
+                self.assertTrue(response[state_field])
+                self.assertEqual(
+                    json.loads(messages[-1]["content"]),
+                    {"error": "get_roots is not available for term_request."},
+                )
+
+    def test_rejected_ontology_is_excluded_from_new_options(self):
+        ontologies = [
+            {"ontologyId": ontology_id}
+            for ontology_id in ("old", "one", "two", "three", "four", "five")
+        ]
+
+        valid, options, _ = agent.validate_ontology_options(
+            json.dumps({"ontologies": ["one", "two", "three", "four", "five"]}),
+            ontologies,
+            ["old"],
+        )
+        invalid, _, _ = agent.validate_ontology_options(
+            json.dumps({"ontologies": ["old", "one", "two", "three", "four"]}),
+            ontologies,
+            ["old"],
+        )
+
+        self.assertTrue(valid)
+        self.assertEqual([option["ontologyId"] for option in options], ["one", "two", "three", "four", "five"])
+        self.assertFalse(invalid)
 
     @patch("ai_assist.term_request_search.agent.call_openrouter")
     def test_search_phase_rejects_ontologies_list_tool_call(self, call_openrouter):
@@ -573,11 +757,6 @@ class AgentTests(TestCase):
     ):
         tool_calls = [
             {
-                "id": "ontologies",
-                "function": {"name": "ontologies_list", "arguments": "{}"},
-            }
-        ] + [
-            {
                 "id": f"roots-{ontology_id}",
                 "function": {
                     "name": "get_roots",
@@ -600,6 +779,9 @@ class AgentTests(TestCase):
         )
         get_roots = Mock(return_value=[])
         response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["one", "two", "three", "four"]
+        response["selected_ontology_ids"] = ["one"]
 
         with patch.dict(
             agent.TERM_REQUEST_SEARCH_FUNCTIONS,
@@ -623,12 +805,6 @@ class AgentTests(TestCase):
             {
                 "content": "",
                 "tool_calls": [
-                    {
-                        "id": "ontologies",
-                        "function": {"name": "ontologies_list", "arguments": "{}"},
-                    }
-                ]
-                + [
                     {
                         "id": call_id,
                         "function": {
@@ -656,6 +832,9 @@ class AgentTests(TestCase):
             "get_roots": Mock(return_value=[]),
         }
         response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["one"]
+        response["selected_ontology_ids"] = ["one"]
 
         with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
             messages = []
@@ -681,10 +860,6 @@ class AgentTests(TestCase):
                 "content": "",
                 "tool_calls": [
                     {
-                        "id": "ontologies",
-                        "function": {"name": "ontologies_list", "arguments": "{}"},
-                    },
-                    {
                         "id": "roots",
                         "function": {
                             "name": "get_roots",
@@ -696,22 +871,18 @@ class AgentTests(TestCase):
                     {
                         "id": call_id,
                         "function": {
-                            "name": "get_term_children",
+                            "name": "search_in_children",
                             "arguments": json.dumps(
                                 {
                                     "ontologyId": "one",
                                     "iri": "root",
+                                    "query": "assay",
                                     "term_type": "class",
-                                    "page": page,
                                 }
                             ),
                         },
                     }
-                    for call_id, page in (
-                        ("children-0", 0),
-                        ("children-1", 1),
-                        ("children-1-again", 1),
-                    )
+                    for call_id in ("children", "children-again")
                 ],
             },
             {},
@@ -723,37 +894,32 @@ class AgentTests(TestCase):
                     {"ontologyId": "one", "iri": "root", "type": "class"}
                 ]
             ),
-            "get_term_children": Mock(
-                return_value=[
-                    {"ontologyId": "one", "iri": "child", "type": "class"}
-                ]
+            "search_in_children": Mock(
+                return_value={"ontologyId": "one", "iri": "child", "type": "class"}
             ),
         }
         response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["one"]
+        response["selected_ontology_ids"] = ["one"]
 
         with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
             messages = []
             agent.run_term_request_or_search_agent_turn(messages, response)
 
-        self.assertEqual(functions["get_term_children"].call_count, 2)
+        functions["search_in_children"].assert_called_once()
         self.assertEqual(
             response["visited_nodes"],
             [{"ontologyId": "one", "iri": "root"}],
         )
-        self.assertEqual(
-            response["visited_node_pages"],
-            [
-                {"ontologyId": "one", "iri": "root", "page": 0},
-                {"ontologyId": "one", "iri": "root", "page": 1},
-            ],
-        )
+        self.assertEqual(response["visited_node_pages"], [])
         self.assertIn(
             {"ontologyId": "one", "iri": "child", "type": "class"},
             response["known_terms"],
         )
         self.assertEqual(
             json.loads(messages[-1]["content"]),
-            {"error": "This ontology node page has already been visited."},
+            {"error": "This ontology node has already been visited."},
         )
         call_openrouter.return_value = ({"content": '{"candidates": []}'}, {})
         agent.run_term_request_or_search_agent_turn(messages, response)
@@ -772,10 +938,6 @@ class AgentTests(TestCase):
                 "content": "",
                 "tool_calls": [
                     {
-                        "id": "ontologies",
-                        "function": {"name": "ontologies_list", "arguments": "{}"},
-                    },
-                    {
                         "id": "roots",
                         "function": {
                             "name": "get_roots",
@@ -785,8 +947,8 @@ class AgentTests(TestCase):
                     {
                         "id": "children",
                         "function": {
-                            "name": "get_term_children",
-                            "arguments": '{"ontologyId": "one", "iri": "unknown", "term_type": "class"}',
+                            "name": "search_in_children",
+                            "arguments": '{"query": "assay", "ontologyId": "one", "iri": "unknown", "term_type": "class"}',
                         },
                     },
                 ],
@@ -800,19 +962,23 @@ class AgentTests(TestCase):
                     {"ontologyId": "one", "iri": "root", "type": "class"}
                 ]
             ),
-            "get_term_children": Mock(),
+            "search_in_children": Mock(),
         }
+        response = workflow_state.new_response("term_request")
+        response["ontologies_list_call_count"] = 1
+        response["available_ontology_ids"] = ["one"]
+        response["selected_ontology_ids"] = ["one"]
 
         with patch.dict(agent.TERM_REQUEST_SEARCH_FUNCTIONS, functions):
             messages = []
             agent.run_term_request_or_search_agent_turn(
-                messages, workflow_state.new_response("term_request")
+                messages, response
             )
 
-        functions["get_term_children"].assert_not_called()
+        functions["search_in_children"].assert_not_called()
         self.assertEqual(
             json.loads(messages[-1]["content"]),
-            {"error": "Select a term returned by get_roots or get_term_children."},
+            {"error": "Select a term returned by get_roots or search_in_children."},
         )
 
     @patch("ai_assist.term_request_search.agent.call_openrouter")
@@ -1187,28 +1353,33 @@ class AgentTaskTests(TestCase):
             {"type": "done", "candidates": candidates, "error": None}, "run-1"
         )
 
+    @patch("ai_assist.term_request_search.runner.logger.exception")
     @patch("ai_assist.term_request_search.runner.fail_run")
     @patch("ai_assist.term_request_search.runner.redis_client")
-    def test_initial_ready_queue_failure_marks_run_failed(self, redis, fail_run):
+    def test_initial_ready_queue_failure_marks_run_failed(self, redis, fail_run, exception):
         redis.blpop.side_effect = RuntimeError("Redis unavailable")
 
         runner.run_term_request_search_agent("run-1", "start")
 
         fail_run.assert_called_once_with("run-1")
+        exception.assert_called_once_with("Unable to start AI assist run %s", "run-1")
 
+    @patch("ai_assist.term_request_search.runner.logger.exception")
     @patch("ai_assist.term_request_search.runner.fail_run")
     @patch("ai_assist.term_request_search.runner.redis_client")
-    def test_resume_state_read_failure_marks_run_failed(self, redis, fail_run):
+    def test_resume_state_read_failure_marks_run_failed(self, redis, fail_run, exception):
         redis.get.side_effect = RuntimeError("Redis unavailable")
 
         runner.resume_term_request_search_agent("run-1")
 
         fail_run.assert_called_once_with("run-1")
+        exception.assert_called_once_with("Unable to resume AI assist run %s", "run-1")
 
+    @patch("ai_assist.term_request_search.runner.logger.exception")
     @patch("ai_assist.term_request_search.runner.cleanup_run")
     @patch("ai_assist.term_request_search.runner.emit")
     @patch("ai_assist.term_request_search.runner.redis_client")
-    def test_run_agent_exception_emits_error_and_cleans_up(self, redis, emit, cleanup):
+    def test_run_agent_exception_emits_error_and_cleans_up(self, redis, emit, cleanup, exception):
         redis.get.return_value = None
         redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
@@ -1218,6 +1389,7 @@ class AgentTaskTests(TestCase):
 
         self.assertEqual(emit.call_args.args[0], {"type": "error", "message": "Assistant run failed."})
         cleanup.assert_called_once_with("run-1")
+        exception.assert_called_once_with("AI assist conversation failed for run %s", "run-1")
 
     @patch("ai_assist.term_request_search.runner.cleanup_run")
     @patch("ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn")
@@ -1257,6 +1429,33 @@ class AgentTaskTests(TestCase):
         self.assertEqual(state["steps"], 1)
         save_state.assert_called_once_with("run-1", state)
         self.assertTrue(any(entry.args[0]["type"] == "question" for entry in emit.call_args_list))
+
+    @patch("ai_assist.term_request_search.runner.save_state")
+    @patch("ai_assist.term_request_search.runner.emit")
+    @patch("ai_assist.term_request_search.runner.redis_client")
+    def test_worker_pauses_for_ontology_selection(self, redis, emit, save_state):
+        redis.get.return_value = None
+        redis.lpop.return_value = None
+        state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}
+        options = [{"ontologyId": str(index)} for index in range(5)]
+
+        with patch(
+            "ai_assist.term_request_search.runner.run_term_request_or_search_agent_turn",
+            side_effect=lambda messages, response, run_id=None, progress_callback=None: response.update(
+                needs_ontology_selection=True, ontology_options=options
+            ),
+        ):
+            runner.run_conversation("run-1", state)
+
+        save_state.assert_called_once_with("run-1", state)
+        self.assertEqual(
+            emit.call_args.args[0],
+            {
+                "type": "ontology_selection",
+                "message": "Choose the ontology to use for the term request.",
+                "ontologies": options,
+            },
+        )
 
     @patch("ai_assist.term_request_search.runner.run_conversation")
     @patch("ai_assist.term_request_search.runner.redis_client")
@@ -1368,6 +1567,42 @@ class AgentConsumerTests(IsolatedAsyncioTestCase):
             "agent:run-1:awaiting_input", "agent:run-1:resuming"
         )
         send_task.assert_called_once_with("ai_assist.tasks.resume_agent_task", args=["run-1"])
+
+    @patch("ai_assist.term_request_search.messages.record_user_input")
+    @patch("ai_assist.term_request_search.messages.redis_client")
+    async def test_receive_ontology_selection_saves_choice_and_resumes(self, redis, record):
+        consumer = self.make_consumer()
+        consumer.send_json = AsyncMock()
+        state = {
+            "messages": [],
+            "response": {
+                "needs_ontology_selection": True,
+                "ontology_options": [{"ontologyId": "obi"}],
+                "selected_ontology_ids": [],
+            },
+        }
+        redis.get.side_effect = ["1", json.dumps(state)]
+        redis.set.return_value = True
+
+        with patch(
+            "ai_assist.term_request_search.messages.sync_to_async",
+            side_effect=lambda fn: AsyncMock(side_effect=fn),
+        ), patch(
+            "ai_assist.term_request_search.messages.current_app.send_task"
+        ) as send_task:
+            await consumer.receive(
+                text_data=json.dumps(
+                    {"type": "select_ontology", "ontologyId": "obi"}
+                )
+            )
+
+        saved = json.loads(redis.setex.call_args.args[2])
+        self.assertEqual(saved["response"]["selected_ontology_ids"], ["obi"])
+        self.assertFalse(saved["response"]["needs_ontology_selection"])
+        record.assert_called_once_with("run-1", "obi")
+        send_task.assert_called_once_with(
+            "ai_assist.tasks.resume_agent_task", args=["run-1"]
+        )
 
     @patch("ai_assist.term_request_search.messages.redis_client")
     async def test_reject_waiting_recommendations_requests_a_reason(self, redis):

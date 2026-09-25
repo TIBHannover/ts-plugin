@@ -37,11 +37,13 @@ TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS = 3
 CLIENT_MESSAGE_TYPE_CANCEL = "cancel"
 CLIENT_MESSAGE_TYPE_REJECT = "reject"
 CLIENT_MESSAGE_TYPE_USER_MESSAGE = "user_message"
+CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY = "select_ontology"
 SERVER_MESSAGE_TYPE_QUESTION = "question"
 SERVER_MESSAGE_TYPE_PROGRESS = "progress"
 SERVER_MESSAGE_TYPE_DONE = "done"
 SERVER_MESSAGE_TYPE_CANCELLED = "cancelled"
 SERVER_MESSAGE_TYPE_AGENT_STARTED = "agent_started"
+SERVER_MESSAGE_TYPE_ONTOLOGY_SELECTION = "ontology_selection"
 RESUME_TERM_REQUEST_SEARCH_AGENT_TASK_NAME = "ai_assist.tasks.resume_agent_task"
 
 RUN_REDIS_KEYS = (
@@ -68,9 +70,13 @@ def new_response(phase="term_request"):
         "search_call_count": 0,
         "ontologies_list_call_count": 0,
         "available_ontology_ids": [],
+        "available_ontologies": [],
+        "ontology_options": [],
         "selected_ontology_ids": [],
+        "needs_ontology_selection": False,
         "rejected_ontology_ids": [],
         "allow_ontology_reselection": False,
+        "pending_ontology_rejection_decision": False,
         "known_terms": [],
         "visited_root_pages": [],
         "visited_nodes": [],

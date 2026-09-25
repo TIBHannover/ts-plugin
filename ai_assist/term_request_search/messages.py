@@ -1,3 +1,5 @@
+import json
+
 from asgiref.sync import sync_to_async
 from celery import current_app
 from django.conf import settings
@@ -11,6 +13,7 @@ from ai_assist.transport import (
     RUN_REDIS_KEY_CANCEL,
     RUN_REDIS_KEY_INPUT,
     RUN_REDIS_KEY_RESUMING,
+    RUN_REDIS_KEY_STATE,
     RUN_TTL_SECONDS,
     SERVER_MESSAGE_TYPE_ERROR,
     run_redis_key,
@@ -20,6 +23,7 @@ from .state import (
     CLIENT_MESSAGE_TYPE_CANCEL,
     CLIENT_MESSAGE_TYPE_REJECT,
     CLIENT_MESSAGE_TYPE_USER_MESSAGE,
+    CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY,
     RESUME_TERM_REQUEST_SEARCH_AGENT_TASK_NAME,
     RUN_REDIS_KEY_AWAITING_INPUT,
     RUN_REDIS_KEY_AWAITING_REJECTION,
@@ -35,6 +39,7 @@ class TermRequestSearchClientMessage:
     CANCEL = CLIENT_MESSAGE_TYPE_CANCEL
     REJECT = CLIENT_MESSAGE_TYPE_REJECT
     USER_MESSAGE = CLIENT_MESSAGE_TYPE_USER_MESSAGE
+    SELECT_ONTOLOGY = CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY
 
     def __init__(self, message_type, message=None):
         self.message_type = message_type
@@ -50,6 +55,8 @@ class TermRequestSearchClientMessage:
             return cls(message_type)
         if message_type == cls.USER_MESSAGE and isinstance(data.get("message"), str):
             return cls(message_type, data["message"])
+        if message_type == cls.SELECT_ONTOLOGY and isinstance(data.get("ontologyId"), str):
+            return cls(message_type, data["ontologyId"])
         return None
 
     def is_cancel(self):
@@ -60,6 +67,9 @@ class TermRequestSearchClientMessage:
 
     def is_user_message(self):
         return self.message_type == self.USER_MESSAGE
+
+    def is_ontology_selection(self):
+        return self.message_type == self.SELECT_ONTOLOGY
 
     def get_message(self):
         return self._message
@@ -85,6 +95,59 @@ class TermRequestSearchMessageHandler:
             await self.handle_rejection()
         elif message.is_user_message():
             await self.handle_user_message(message)
+        elif message.is_ontology_selection():
+            await self.handle_ontology_selection(message.get_message())
+
+    async def handle_ontology_selection(self, ontology_id):
+        awaiting_key = RUN_REDIS_KEY_AWAITING_INPUT
+        waiting = await sync_to_async(redis_client.get)(
+            run_redis_key(self.consumer.run_id, awaiting_key)
+        )
+        if not waiting:
+            return
+        resuming = await sync_to_async(redis_client.set)(
+            run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING),
+            REDIS_TRUE_VALUE,
+            nx=True,
+            ex=RESUME_TTL_SECONDS,
+        )
+        if not resuming:
+            return
+
+        state_key = run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_STATE)
+        state_json = await sync_to_async(redis_client.get)(state_key)
+        state = json.loads(state_json) if state_json else {}
+        response = state.get("response", {})
+        valid_ids = {
+            option.get("ontologyId")
+            for option in response.get("ontology_options", [])
+            if isinstance(option, dict)
+        }
+        if not response.get("needs_ontology_selection") or ontology_id not in valid_ids:
+            await sync_to_async(redis_client.delete)(
+                run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_RESUMING)
+            )
+            await self.consumer.send_json(
+                {
+                    "type": SERVER_MESSAGE_TYPE_ERROR,
+                    "message": "Select one of the suggested ontologies.",
+                }
+            )
+            return
+
+        response["selected_ontology_ids"] = [ontology_id]
+        response["needs_ontology_selection"] = False
+        state.setdefault("messages", []).append(
+            {
+                "role": "user",
+                "content": f'The user selected ontology "{ontology_id}". Continue with this ontology.',
+            }
+        )
+        await sync_to_async(redis_client.setex)(
+            state_key, RUN_TTL_SECONDS, json.dumps(state)
+        )
+        await sync_to_async(record_user_input)(self.consumer.run_id, ontology_id)
+        await self.resume_task(awaiting_key)
 
     async def handle_rejection(self):
         waiting = await sync_to_async(redis_client.get)(
@@ -198,10 +261,11 @@ class TermRequestSearchMessageHandler:
         if awaiting_key == RUN_REDIS_KEY_AWAITING_REJECTION_REASON:
             message.set_message(
                 f"The user rejected these recommendations because: {user_message}. "
-                "Decide whether this means the selected ontology does not fit. If it does, "
-                "call ontologies_list to select the next closest ontology and "
-                "restart traversal. Otherwise, return different suitable candidates from "
-                "the selected ontology."
+                "Interpret the full feedback semantically, without fuzzy or keyword "
+                "matching. First return only JSON as {\"ontology_rejected\": true} if "
+                "the user explicitly says the selected ontology itself is not a fit, or "
+                "{\"ontology_rejected\": false} for feedback about the candidates, "
+                "branch, specificity, or broadness. Do not call a tool for this decision."
             )
         await sync_to_async(redis_client.rpush)(
             run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_INPUT),

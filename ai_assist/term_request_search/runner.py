@@ -1,4 +1,5 @@
 import json
+import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -32,9 +33,12 @@ from .state import (
     SERVER_MESSAGE_TYPE_DONE,
     SERVER_MESSAGE_TYPE_PROGRESS,
     SERVER_MESSAGE_TYPE_QUESTION,
+    SERVER_MESSAGE_TYPE_ONTOLOGY_SELECTION,
     new_response,
     normalize_state,
 )
+
+logger = logging.getLogger(__name__)
 
 TERM_REQUEST_AGENT_MAX_LOOPS = settings.TERM_REQUEST_AI_ASSIST_MAX_LOOPS
 SEARCH_AGENT_MAX_LOOPS = settings.SEARCH_AI_ASSIST_MAX_LOOPS
@@ -86,6 +90,7 @@ def run_term_request_search_agent(
         )
         run_conversation(run_id, state)
     except Exception:
+        logger.exception("Unable to start AI assist run %s", run_id)
         fail_run(run_id)
 
 
@@ -134,7 +139,8 @@ def resume_term_request_search_agent(run_id):
                 state["response"]["search_results"] = []
                 state["response"]["candidates"] = []
             else:
-                state["response"]["allow_ontology_reselection"] = True
+                state["response"]["allow_ontology_reselection"] = False
+                state["response"]["pending_ontology_rejection_decision"] = True
         elif (
             state["response"].get("phase") == "term_request"
             and state["response"].get("needs_user_input")
@@ -145,6 +151,7 @@ def resume_term_request_search_agent(run_id):
         state["response"]["is_final"] = False
         run_conversation(run_id, state)
     except Exception:
+        logger.exception("Unable to resume AI assist run %s", run_id)
         fail_run(run_id)
 
 
@@ -172,6 +179,18 @@ def run_conversation(run_id, state):
                 ),
             )
             state["steps"] = step + 1
+
+            if response["needs_ontology_selection"]:
+                save_state(run_id, state)
+                emit(
+                    {
+                        "type": SERVER_MESSAGE_TYPE_ONTOLOGY_SELECTION,
+                        "message": "Choose the ontology to use for the term request.",
+                        "ontologies": response["ontology_options"],
+                    },
+                    run_id,
+                )
+                return
 
             if response["needs_user_input"]:
                 save_state(run_id, state)
@@ -245,6 +264,7 @@ def run_conversation(run_id, state):
         )
         cleanup_run(run_id)
     except Exception:
+        logger.exception("AI assist conversation failed for run %s", run_id)
         fail_run(run_id)
 
 
