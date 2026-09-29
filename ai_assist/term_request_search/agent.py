@@ -2,9 +2,11 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
+import time
 from typing import Any
 
 from openai import OpenAI
+import requests
 
 from ai_assist.session_logging import record_model_output
 from . import search_agent, structural_agent
@@ -22,6 +24,7 @@ client = OpenAI(
     api_key=os.environ["LLM_API_KEY"],
 )
 MODEL = os.environ["LLM_MODEL"]
+OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 MAX_TERM_REQUEST_CLARIFICATIONS = 2
 MAX_ONTOLOGY_SELECTION_FAILURES = 2
 
@@ -36,6 +39,8 @@ FUNCTION_LABELS = {
     "get_ontology_detail": "Checking ontology details",
     "ontologies_list": "Listing ontologies",
     "find_category_terms": "Locating the category subtree",
+    "select_category_term": "Selecting the category subtree",
+    "select_beam_subtrees": "Selecting traversal subtrees",
 }
 TERM_REQUEST_TOOL_NAMES = structural_agent.STRUCTURAL_TOOL_NAMES
 TRAVERSAL_CONTEXT_PREFIX = structural_agent.TRAVERSAL_CONTEXT_PREFIX
@@ -65,7 +70,41 @@ def call_openrouter(
         **({"tool_choice": "required"} if tools and require_tool else {}),
     )
     usage = _as_dict(response.usage) if response.usage else {}
+    upstream_cost = (usage.get("cost_details") or {}).get(
+        "upstream_inference_cost"
+    )
+    if usage.get("cost") == 0 and upstream_cost:
+        usage["cost"] = upstream_cost
+    if usage.get("cost") is None or (
+        usage.get("cost") == 0 and usage.get("total_tokens", 0) > 0
+    ):
+        cost = get_generation_cost(response.id)
+        if cost is not None:
+            usage["cost"] = cost
     return _as_dict(response.choices[0].message), usage
+
+
+def get_generation_cost(generation_id):
+    try:
+        cost = None
+        for delay in (0, 0.5, 1):
+            if delay:
+                time.sleep(delay)
+            response = requests.get(
+                OPENROUTER_GENERATION_URL,
+                params={"id": generation_id},
+                headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
+                timeout=(3.05, 10),
+            )
+            response.raise_for_status()
+            data = response.json().get("data", {})
+            cost = data.get("total_cost") or data.get("usage")
+            if cost:
+                break
+        return cost
+    except Exception:
+        logger.exception("Unable to retrieve OpenRouter cost for %s", generation_id)
+        return None
 
 
 def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
@@ -100,6 +139,14 @@ def _tool_allowed(fn_name: str, phase: str, response: dict[str, Any]) -> bool:
         return fn_name == "ontologies_list"
     if response["available_ontology_ids"] and not response["selected_ontology_ids"]:
         return False
+    if (
+        response["selected_ontology_ids"]
+        and response["term_category"]
+        and not response["category_search_complete"]
+    ):
+        return fn_name == "find_category_terms"
+    if response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
+        return bool(response.get("category_candidate_nodes")) and fn_name == "select_category_term"
     return fn_name in TERM_REQUEST_TOOL_NAMES - {"ontologies_list"} or (
         fn_name == "ontologies_list" and response["allow_ontology_reselection"]
     )
@@ -174,6 +221,12 @@ def validate_term_request_agent_response(
     content: str,
     selected_ontology_ids: list[str] | None = None,
     known_terms: list[dict[str, str]] | None = None,
+    beam_terminal_nodes: list[dict[str, str]] | None = None,
+    beam_frontier_nodes: list[dict[str, str]] | None = None,
+    beam_option_nodes: list[dict[str, str]] | None = None,
+    beam_options_classified: bool | None = None,
+    beam_fallback_nodes: list[dict[str, str]] | None = None,
+    rejected_parent_nodes: list[dict[str, str]] | None = None,
 ) -> tuple[bool, str, str]:
     try:
         response = json.loads(content)
@@ -181,19 +234,41 @@ def validate_term_request_agent_response(
         return (
             False,
             "",
-            "Your final response is not valid JSON. Return only a JSON object with exactly three candidates.",
+            "Your final response is not valid JSON. Return only a JSON object with up to five candidates.",
         )
 
     if not isinstance(response, dict):
         return (
             False,
             "",
-            "Your final response must be a JSON object with exactly three candidates.",
+            "Your final response must be a JSON object with up to five candidates.",
         )
 
     candidates = response.get("candidates")
-    if not isinstance(candidates, list) or len(candidates) != 3:
-        return False, "", "Your final response must include exactly three candidates."
+    if not isinstance(candidates, list) or len(candidates) > 5:
+        return False, "", "Your final response must include at most five candidates."
+    if beam_options_classified is False or beam_frontier_nodes:
+        return False, "", "Classify every beam option and finish or discard every active subtree."
+    if not candidates:
+        if beam_terminal_nodes or (
+            beam_options_classified is None and beam_option_nodes
+        ) or (
+            beam_fallback_nodes
+            and beam_options_classified
+            and not beam_frontier_nodes
+            and not beam_option_nodes
+        ):
+            return False, "", "Finish or discard every active subtree and return all terminal parent candidates."
+        return True, json.dumps(response), ""
+
+    fallback_nodes = (
+        beam_fallback_nodes
+        if not beam_terminal_nodes
+        and beam_options_classified
+        and not beam_frontier_nodes
+        and not beam_option_nodes
+        else None
+    )
 
     candidate_ids = set()
     for index, candidate in enumerate(candidates):
@@ -231,9 +306,19 @@ def validate_term_request_agent_response(
             for term in known_terms
         ):
             return False, "", "Return candidates reached through the ontology traversal."
+        if rejected_parent_nodes and any(
+            node.get("ontologyId") == ontology_id and node.get("iri") == parent_iri
+            for node in rejected_parent_nodes
+        ):
+            return False, "", "Do not return a parent term the user rejected."
+        if beam_terminal_nodes is not None and not any(
+            node.get("ontologyId") == ontology_id and node.get("iri") == parent_iri
+            for node in (beam_terminal_nodes or fallback_nodes or [])
+        ):
+            return False, "", "Return only parent candidates in the surviving beam."
         candidate_id = (ontology_id.casefold(), parent_iri)
         if candidate_id in candidate_ids:
-            return False, "", "Return three distinct candidates."
+            return False, "", "Return distinct candidates."
         candidate_ids.add(candidate_id)
         candidates[index] = {
             "parent_label": parent_label,
@@ -241,7 +326,18 @@ def validate_term_request_agent_response(
             "parent_iri": parent_iri,
         }
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    if beam_terminal_nodes and candidate_ids != {
+        (node["ontologyId"].casefold(), node["iri"])
+        for node in beam_terminal_nodes
+    }:
+        return False, "", "Return every terminal parent candidate."
+    if fallback_nodes and candidate_ids != {
+        (node["ontologyId"].casefold(), node["iri"])
+        for node in fallback_nodes
+    }:
+        return False, "", "Return every exhausted-branch fallback candidate."
+
+    with ThreadPoolExecutor(max_workers=len(candidates)) as executor:
         term_details = executor.map(
             get_term_detail,
             (candidate["parent_iri"] for candidate in candidates),
@@ -347,6 +443,43 @@ def run_term_request_or_search_agent_turn(
                 and not response["selected_ontology_ids"],
             )
         )
+        if (
+            response["selected_ontology_ids"]
+            and response["term_category"]
+            and not response["category_search_complete"]
+            and not response["allow_ontology_reselection"]
+        ):
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool["function"]["name"] == "find_category_terms"
+            ]
+        elif response["category_candidate_nodes"] and not response["category_anchor_nodes"]:
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool["function"]["name"] == "select_category_term"
+            ]
+        elif response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
+            available_tools = []
+        elif response["beam_option_nodes"] and not response["beam_options_classified"]:
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool["function"]["name"] == "select_beam_subtrees"
+            ]
+        elif response["beam_frontier_nodes"]:
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool["function"]["name"] == "search_in_children"
+            ]
+        elif response["category_anchor_nodes"] and response["beam_options_classified"]:
+            available_tools = [
+                tool
+                for tool in available_tools
+                if tool["function"]["name"] == "get_term_detail"
+            ] if response["beam_terminal_nodes"] or response["beam_fallback_nodes"] else []
     message, usage = call_openrouter(
         messages, available_tools, response.get("force_tool_call", False)
     )
@@ -382,6 +515,9 @@ def run_term_request_or_search_agent_turn(
             response["pending_ontology_rejection_decision"] = False
             response["allow_ontology_reselection"] = ontology_rejected
             response["force_tool_call"] = ontology_rejected
+            if not ontology_rejected:
+                structural_agent.restart_parent_search(response)
+                response["force_tool_call"] = True
             messages.append(
                 {
                     "role": "user",
@@ -513,7 +649,11 @@ def run_term_request_or_search_agent_turn(
                 content, response["search_results"]
             )
         else:
-            if response["term_category"] and not response["category_anchor_nodes"]:
+            if (
+                response["term_category"]
+                and response["category_candidate_nodes"]
+                and not response["category_anchor_nodes"]
+            ):
                 messages.append(
                     {
                         "role": "user",
@@ -525,6 +665,12 @@ def run_term_request_or_search_agent_turn(
                 content,
                 response["selected_ontology_ids"],
                 response["known_terms"],
+                response["beam_terminal_nodes"],
+                response["beam_frontier_nodes"],
+                response["beam_option_nodes"],
+                response["beam_options_classified"],
+                response["beam_fallback_nodes"],
+                response["rejected_parent_nodes"],
             )
         if is_valid:
             temp = json.loads(final_response)
@@ -533,6 +679,14 @@ def run_term_request_or_search_agent_turn(
             response["is_final"] = True
             return
 
+        response["invalid_final_response_count"] = (
+            response.get("invalid_final_response_count", 0) + 1
+        )
+        if response["invalid_final_response_count"] >= 2:
+            response["candidates"] = []
+            response["error"] = "Assistant could not produce a valid parent-term result."
+            response["is_final"] = True
+            return
         messages.append(
             {
                 "role": "user",
@@ -541,6 +695,7 @@ def run_term_request_or_search_agent_turn(
         )
         return
 
+    response["invalid_final_response_count"] = 0
     for tool_call in tool_calls:
         response["progress_feedback"] = ""
         fn_name = tool_call["function"]["name"]

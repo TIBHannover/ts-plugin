@@ -80,6 +80,14 @@ def _text_values(value):
     return []
 
 
+def select_beam_subtrees(options):
+    return options
+
+
+def select_category_term(iri):
+    return iri
+
+
 TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
     {
         "type": "function",
@@ -96,7 +104,54 @@ TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
                 "required": ["ontologyId"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "select_category_term",
+            "description": (
+                "Select exactly one returned category term as the category anchor. "
+                "The beam search starts only after this selection."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"iri": {"type": "string"}},
+                "required": ["iri"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "select_beam_subtrees",
+            "description": (
+                "Classify every current beam option exactly once as active, terminal, "
+                "or discard. The controller globally ranks all non-discarded options "
+                "and retains at most five."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "options": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "iri": {"type": "string"},
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["active", "terminal", "discard"],
+                                },
+                            },
+                            "required": ["iri", "status"],
+                        },
+                        "minItems": 1,
+                    }
+                },
+                "required": ["options"],
+            },
+        },
+    },
 ]
 TERM_REQUEST_SEARCH_FUNCTIONS = {
     "batch_search": batch_search,
@@ -108,4 +163,6 @@ TERM_REQUEST_SEARCH_FUNCTIONS = {
     "ontologies_list": ontologies_list,
     "search_under_term": search_under_term,
     "find_category_terms": find_category_terms,
+    "select_category_term": select_category_term,
+    "select_beam_subtrees": select_beam_subtrees,
 }

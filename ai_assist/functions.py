@@ -225,7 +225,7 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
             return "Error: query must be a non-empty string"
 
         entity_type = "classes" if term_type == "class" else "properties"
-        encoded_iri = urllib.parse.quote(iri, safe="")
+        encoded_iri = urllib.parse.quote(urllib.parse.quote(iri, safe=""), safe="")
         url = (
             f"{TS_BASE_URL}ontologies/{ontologyId}/{entity_type}/{encoded_iri}/"
             "hierarchicalChildren"
@@ -250,8 +250,7 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
             )
             return max(scores, default=0)
 
-        match = None
-        match_score = -1
+        matches = []
         page = 0
         total_pages = 1
         while page < total_pages:
@@ -266,7 +265,12 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
                 timeout=REQUEST_TIMEOUT,
             ).json()
             if page == 0:
-                total_pages = response.get("page", {}).get("totalPages", 1)
+                page_data = response.get("page", {})
+                total_pages = (
+                    page_data.get("totalPages", 1)
+                    if isinstance(page_data, dict)
+                    else response.get("totalPages", 1)
+                )
                 if (
                     isinstance(total_pages, bool)
                     or not isinstance(total_pages, int)
@@ -279,22 +283,26 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
             if not isinstance(children, list) or len(children) > CHILD_SEARCH_PAGE_SIZE:
                 return f"Error: invalid child page for {iri}"
             for child in children:
-                child_score = score(child)
-                if child_score > match_score:
-                    match = child
-                    match_score = child_score
+                matches.append((score(child), len(matches), child))
             page += 1
-        if match is None:
-            return f"Error: no children found for {iri}"
-        definition = convert_to_str(match.get("definition", ""))
-        return {
-            "label": convert_to_str(match["label"]),
-            "iri": match["iri"],
-            "definition": definition[:DEFNITION_MAX_LENGTH],
-            "ontologyId": match["ontologyId"],
-            "synonym": match.get("synonym", []),
-            "type": get_term_type(match),
-        }
+        if not matches:
+            return []
+        return [
+            {
+                "label": convert_to_str(match["label"]),
+                "iri": match["iri"],
+                "definition": convert_to_str(match.get("definition", ""))[
+                    :DEFNITION_MAX_LENGTH
+                ],
+                "ontologyId": match["ontologyId"],
+                "synonym": match.get("synonym", []),
+                "type": get_term_type(match),
+                "score": score,
+            }
+            for score, _, match in sorted(
+                matches, key=lambda item: (-item[0], item[1])
+            )[:5]
+        ]
     except Exception:
         logger.exception("Unable to search children for %s in %s", iri, ontologyId)
         return f"Error: no children found for {iri}"
@@ -471,7 +479,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_in_children",
-            "description": "Search all direct children of a class or property locally and return the closest matching child. The upstream API does not support child search. The result includes label, IRI, definition, ontology ID, synonyms, and term type.",
+            "description": "Search all direct children of a class or property locally and return the five closest matching children for beam traversal. The upstream API does not support child search. Results include label, IRI, definition, ontology ID, synonyms, term type, and relevance score.",
             "parameters": {
                 "type": "object",
                 "properties": {

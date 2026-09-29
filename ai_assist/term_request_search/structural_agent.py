@@ -7,10 +7,13 @@ from .state import get_category_values
 
 
 TRAVERSAL_CONTEXT_PREFIX = "Ontology traversal state:"
+MAX_BEAM_NODE_ERRORS = 2
 STRUCTURAL_TOOL_NAMES = {
     "ontologies_list",
     "get_ontology_detail",
     "find_category_terms",
+    "select_category_term",
+    "select_beam_subtrees",
     "get_roots",
     "search_in_children",
     "get_term_detail",
@@ -29,8 +32,17 @@ def initialize_state(response: dict[str, Any]) -> None:
     response.setdefault("pending_ontology_rejection_decision", False)
     response.setdefault("known_terms", [])
     response.setdefault("category_search_complete", False)
+    response.setdefault("category_candidate_nodes", [])
     response.setdefault("category_anchor_nodes", [])
     response.setdefault("category_branch_nodes", [])
+    response.setdefault("beam_frontier_nodes", [])
+    response.setdefault("beam_option_nodes", [])
+    response.setdefault("beam_terminal_nodes", [])
+    response.setdefault("beam_fallback_nodes", [])
+    response.setdefault("expanded_beam_nodes", [])
+    response.setdefault("rejected_parent_nodes", [])
+    response.setdefault("beam_options_classified", False)
+    response.setdefault("beam_node_errors", [])
     response.setdefault("visited_root_pages", [])
     response.setdefault("visited_nodes", [])
     response.setdefault("visited_node_pages", [])
@@ -47,8 +59,17 @@ def update_traversal_context(messages: list[dict[str, Any]], response: dict[str,
         f"Visited nodes: {json.dumps(response['visited_nodes'])}\n"
         f"Visited node pages: {json.dumps(response['visited_node_pages'])}\n"
         f"Category search complete: {json.dumps(response['category_search_complete'])}\n"
+        f"Category candidates: {json.dumps(response['category_candidate_nodes'])}\n"
         f"Category anchors: {json.dumps(response['category_anchor_nodes'])}\n"
+        f"Active beam: {json.dumps(response['beam_frontier_nodes'])}\n"
+        f"Beam options: {json.dumps(response['beam_option_nodes'])}\n"
+        f"Terminal parents: {json.dumps(response['beam_terminal_nodes'])}\n"
+        f"Exhausted branch fallbacks: {json.dumps(response['beam_fallback_nodes'])}\n"
+        f"Rejected parent terms: {json.dumps(response['rejected_parent_nodes'])}\n"
+        f"Beam options classified: {json.dumps(response['beam_options_classified'])}\n"
+        f"Beam lookup errors: {json.dumps(response['beam_node_errors'])}\n"
         "The requested category is a hard subtree constraint. Locate its matching term before using the term label to descend. "
+        "Classify every beam option exactly once as active, terminal, or discard with select_beam_subtrees before expanding active nodes. "
         "Do not request the same node again. Continue through terms returned by roots or child search."
     )
     for message in messages:
@@ -101,7 +122,55 @@ def execute_tool(
         arguments["hosted_on_github"] = True
     if function_name == "find_category_terms":
         arguments["category"] = response["term_category"]
+    if function_name == "select_category_term":
+        selected = next(
+            node
+            for node in response["category_candidate_nodes"]
+            if node["iri"] == arguments["iri"]
+        )
+        _record_category_anchor(selected, selected["ontologyId"], response)
+        _record_beam_options([selected], selected["ontologyId"], response)
+        return selected
+    if function_name == "select_beam_subtrees":
+        options = {
+            option["iri"]: option
+            for option in response["beam_option_nodes"]
+            if option["ontologyId"] == response["selected_ontology_ids"][0]
+        }
+        classified = {item["iri"]: item["status"] for item in arguments["options"]}
+        nodes = sorted(
+            (options[iri] for iri, status in classified.items() if status != "discard"),
+            key=lambda option: option.get("score", 0),
+            reverse=True,
+        )[:5]
+        response["beam_frontier_nodes"] = [
+            node for node in nodes if classified[node["iri"]] == "active"
+        ]
+        response["beam_terminal_nodes"] = [
+            node for node in nodes if classified[node["iri"]] == "terminal"
+        ]
+        for option in options.values():
+            if (
+                classified[option["iri"]] == "discard"
+                and _contains_node(response["expanded_beam_nodes"], option)
+                and any(
+                    node.get("parent_iri") == option["iri"] for node in nodes
+                )
+                and not _contains_node(response["rejected_parent_nodes"], option)
+                and not _contains_node(response["beam_fallback_nodes"], option)
+            ):
+                response["beam_fallback_nodes"].append(option)
+        response["beam_fallback_nodes"] = sorted(
+            response["beam_fallback_nodes"],
+            key=lambda option: (option.get("depth", 0), option.get("score", 0)),
+            reverse=True,
+        )[:5]
+        response["beam_option_nodes"] = nodes.copy()
+        response["beam_options_classified"] = True
+        return nodes
     result = functions[function_name](**arguments)
+    if function_name == "search_in_children" and isinstance(result, str):
+        return _record_beam_error(response, node, result)
     _record_result(function_name, ontology_id, result, response, node, node_page, root_page)
     return result
 
@@ -117,8 +186,17 @@ def restart_ontology_selection(response):
     response["selected_ontology_ids"] = []
     response["known_terms"] = []
     response["category_search_complete"] = False
+    response["category_candidate_nodes"] = []
     response["category_anchor_nodes"] = []
     response["category_branch_nodes"] = []
+    response["beam_frontier_nodes"] = []
+    response["beam_option_nodes"] = []
+    response["beam_terminal_nodes"] = []
+    response["beam_fallback_nodes"] = []
+    response["expanded_beam_nodes"] = []
+    response["rejected_parent_nodes"] = []
+    response["beam_options_classified"] = False
+    response["beam_node_errors"] = []
     response["visited_root_pages"] = []
     response["visited_nodes"] = []
     response["visited_node_pages"] = []
@@ -128,6 +206,32 @@ def restart_ontology_selection(response):
     response["suppressed_domain_question_count"] = 0
     response["invalid_question_reason_count"] = 0
     response["force_tool_call"] = False
+
+
+def restart_parent_search(response):
+    for candidate in response["candidates"]:
+        node = {
+            "ontologyId": candidate["ontology"],
+            "iri": candidate["parent_iri"],
+        }
+        if not _contains_node(response["rejected_parent_nodes"], node):
+            response["rejected_parent_nodes"].append(node)
+    response["candidates"] = []
+    response["known_terms"] = []
+    response["category_search_complete"] = False
+    response["category_candidate_nodes"] = []
+    response["category_anchor_nodes"] = []
+    response["category_branch_nodes"] = []
+    response["beam_frontier_nodes"] = []
+    response["beam_option_nodes"] = []
+    response["beam_terminal_nodes"] = []
+    response["beam_fallback_nodes"] = []
+    response["expanded_beam_nodes"] = []
+    response["beam_options_classified"] = False
+    response["beam_node_errors"] = []
+    response["visited_root_pages"] = []
+    response["visited_nodes"] = []
+    response["visited_node_pages"] = []
 
 
 def _validation_error(function_name, arguments, response, ontology_id, known_term, node, node_page, root_page):
@@ -147,6 +251,55 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
             return "Select an ontology before searching for the category."
         if response["category_search_complete"]:
             return "The requested category has already been searched."
+    if function_name == "select_category_term":
+        if response["category_anchor_nodes"]:
+            return "The category term has already been selected."
+        if not response["category_search_complete"]:
+            return "Call find_category_terms before selecting the category term."
+        if arguments.get("iri") not in {
+            node["iri"] for node in response["category_candidate_nodes"]
+        }:
+            return "Select a category term returned by find_category_terms."
+    if function_name == "select_beam_subtrees":
+        if response["term_category"] and not response["category_anchor_nodes"]:
+            return "Select the category term before starting beam search."
+        classifications = arguments.get("options")
+        if (
+            not isinstance(classifications, list)
+            or not classifications
+            or not all(
+                isinstance(item, dict)
+                and isinstance(item.get("iri"), str)
+                and item["iri"]
+                and item.get("status") in ("active", "terminal", "discard")
+                for item in classifications
+            )
+        ):
+            return "Classify every beam option as active, terminal, or discard."
+        if not response["selected_ontology_ids"]:
+            return "Select an ontology before selecting beam subtrees."
+        iris = [item["iri"] for item in classifications]
+        expected_iris = [node["iri"] for node in response["beam_option_nodes"]]
+        if len(set(iris)) != len(iris) or set(iris) != set(expected_iris):
+            return "Classify every current beam option exactly once."
+        for item in classifications:
+            node = {
+                "ontologyId": response["selected_ontology_ids"][0],
+                "iri": item["iri"],
+            }
+            if item["status"] == "terminal" and not _contains_node(
+                response["expanded_beam_nodes"], node
+            ):
+                return "Only an expanded beam node can be marked terminal."
+            if item["status"] == "terminal" and _contains_node(
+                response["rejected_parent_nodes"], node
+            ):
+                return "A rejected parent term cannot be selected again."
+            if item["status"] == "active" and _contains_node(
+                response["visited_nodes"], node
+            ):
+                return "An expanded beam node must be terminal or discarded."
+        return None
     if (
         function_name in ("get_roots", "search_in_children")
         and response["selected_ontology_ids"]
@@ -154,6 +307,12 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
         and not response["category_search_complete"]
     ):
         return "Call find_category_terms before traversing the ontology."
+    if (
+        function_name in ("get_roots", "search_in_children")
+        and response["term_category"]
+        and not response["category_anchor_nodes"]
+    ):
+        return "Select the category term before starting beam search."
     if function_name == "get_roots":
         if response["category_anchor_nodes"]:
             return "Start traversal from a category term returned by find_category_terms."
@@ -185,6 +344,8 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
             }
         ):
             return "Use the category or one of its synonyms until its subtree is found."
+        if not _contains_node(response["beam_frontier_nodes"], node):
+            return "Call select_beam_subtrees and expand only an active beam node."
         if arguments.get("term_type") != known_term.get("type"):
             return "term_type must match the selected term's type."
         if node in response["visited_nodes"]:
@@ -195,6 +356,16 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
 def _record_result(function_name, ontology_id, result, response, node, node_page, root_page):
     if isinstance(result, str):
         return
+    if function_name == "search_in_children" and not _contains_node(
+        response["expanded_beam_nodes"], node
+    ):
+        response["expanded_beam_nodes"].append(node)
+    if function_name == "search_in_children":
+        response["beam_node_errors"] = [
+            error
+            for error in response["beam_node_errors"]
+            if not _same_node(error, node)
+        ]
     if function_name == "ontologies_list" and isinstance(result, list):
         response["available_ontologies"] = result
         response["available_ontology_ids"] = [ontology["ontologyId"] for ontology in result if isinstance(ontology, dict) and isinstance(ontology.get("ontologyId"), str)]
@@ -208,6 +379,7 @@ def _record_result(function_name, ontology_id, result, response, node, node_page
         response["visited_root_pages"].append(root_page)
     if function_name == "get_roots" and isinstance(result, list):
         _record_known_terms(result, ontology_id, response)
+        _record_beam_options(result, ontology_id, response)
         for term in result:
             if _matches_category(term, response["term_category"]):
                 _record_category_anchor(term, ontology_id, response)
@@ -220,16 +392,22 @@ def _record_result(function_name, ontology_id, result, response, node, node_page
             for term in matches
         ]
         _record_known_terms(terms, ontology_id, response)
+        response["category_candidate_nodes"] = [
+            {**term, "ontologyId": ontology_id}
+            for term in terms
+            if isinstance(term, dict) and isinstance(term.get("iri"), str)
+        ]
+        response["beam_options_classified"] = not response["category_candidate_nodes"]
+    if function_name == "search_in_children" and isinstance(result, (dict, list)):
+        terms = result if isinstance(result, list) else [result]
+        _record_known_terms(terms, ontology_id, response)
+        _record_beam_options(terms, ontology_id, response, node)
         for term in terms:
-            _record_category_anchor(term, ontology_id, response)
-    if function_name == "search_in_children":
-        if isinstance(result, dict):
-            _record_known_terms([result], ontology_id, response)
-            child = {"ontologyId": ontology_id, "iri": result.get("iri")}
+            child = {"ontologyId": ontology_id, "iri": term.get("iri")}
             if not response["category_anchor_nodes"] and _matches_category(
-                result, response["term_category"]
+                term, response["term_category"]
             ):
-                _record_category_anchor(result, ontology_id, response)
+                _record_category_anchor(term, ontology_id, response)
             elif (
                 response["category_anchor_nodes"]
                 and isinstance(child["iri"], str)
@@ -247,6 +425,88 @@ def _record_known_terms(terms, ontology_id, response):
         known_term = {"ontologyId": ontology_id, "iri": term.get("iri"), "type": term.get("type")}
         if all(isinstance(value, str) for value in known_term.values()) and known_term not in response["known_terms"]:
             response["known_terms"].append(known_term)
+
+
+def _record_beam_options(terms, ontology_id, response, parent=None):
+    response["beam_options_classified"] = False
+    parent_score = next(
+        (
+            item.get("score", 0)
+            for item in response["beam_frontier_nodes"]
+            if _same_node(item, parent)
+        ),
+        0,
+    )
+    for term in terms:
+        node = {
+            "ontologyId": ontology_id,
+            "iri": term.get("iri"),
+            "score": (parent_score + term.get("score", 0)) / (2 if parent else 1),
+        }
+        if parent:
+            node["parent_iri"] = parent["iri"]
+            node["depth"] = next(
+                (
+                    item.get("depth", 0) + 1
+                    for item in response["beam_frontier_nodes"]
+                    if _same_node(item, parent)
+                ),
+                1,
+            )
+        if not isinstance(node["iri"], str):
+            continue
+        existing = next(
+            (
+                option
+                for option in response["beam_option_nodes"]
+                if _same_node(option, node)
+            ),
+            None,
+        )
+        if existing:
+            if node["score"] > existing.get("score", 0):
+                existing.update(node)
+        else:
+            response["beam_option_nodes"].append(node)
+
+
+def _record_beam_error(response, node, error):
+    node_error = next(
+        (item for item in response["beam_node_errors"] if _same_node(item, node)),
+        None,
+    )
+    if node_error:
+        node_error["count"] += 1
+    else:
+        node_error = {**node, "count": 1}
+        response["beam_node_errors"].append(node_error)
+    discarded = node_error["count"] >= MAX_BEAM_NODE_ERRORS
+    if discarded:
+        response["beam_frontier_nodes"] = [
+            item
+            for item in response["beam_frontier_nodes"]
+            if not _same_node(item, node)
+        ]
+        response["beam_option_nodes"] = [
+            item
+            for item in response["beam_option_nodes"]
+            if not _same_node(item, node)
+        ]
+        response["beam_options_classified"] = not response["beam_frontier_nodes"]
+    return {"error": error, "branch_discarded": discarded}
+
+
+def _contains_node(nodes, node):
+    return any(_same_node(item, node) for item in nodes)
+
+
+def _same_node(left, right):
+    return bool(
+        left
+        and right
+        and left.get("ontologyId") == right.get("ontologyId")
+        and left.get("iri") == right.get("iri")
+    )
 
 
 def _matches_category(term, category):
