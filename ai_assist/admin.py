@@ -28,6 +28,7 @@ class AiAssistSessionAdmin(admin.ModelAdmin):
         "workflow",
         "context_size",
         "total_tokens",
+        "cost_usd",
         "created_at",
     )
     list_filter = ("workflow", "created_at")
@@ -40,6 +41,7 @@ class AiAssistSessionAdmin(admin.ModelAdmin):
         "prompt_tokens",
         "completion_tokens",
         "total_tokens",
+        "cost_usd",
         "created_at",
     )
     inlines = (AiAssistUserInputInline, AiAssistModelOutputInline)

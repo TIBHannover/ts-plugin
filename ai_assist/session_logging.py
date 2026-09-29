@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from django.db import transaction
 from user.models import UserModel
@@ -56,12 +57,14 @@ def record_model_output(run_id, content, usage):
             session.prompt_tokens += prompt_tokens
             session.completion_tokens += usage.get("completion_tokens") or 0
             session.total_tokens += usage.get("total_tokens") or 0
+            session.cost_usd += Decimal(str(usage.get("cost") or 0))
             session.save(
                 update_fields=(
                     "context_size",
                     "prompt_tokens",
                     "completion_tokens",
                     "total_tokens",
+                    "cost_usd",
                 )
             )
     except Exception:

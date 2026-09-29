@@ -1750,7 +1750,7 @@ class AgentTaskTests(TestCase):
 
     @patch("ai_assist.term_request_search.runner.emit")
     @patch("ai_assist.term_request_search.runner.redis_client")
-    def test_worker_allows_at_most_40_llm_turns(self, redis, emit):
+    def test_worker_honors_term_request_loop_limit(self, redis, emit):
         redis.get.return_value = None
         redis.lpop.return_value = None
         state = {"messages": [], "response": workflow_state.new_response(), "steps": 0}

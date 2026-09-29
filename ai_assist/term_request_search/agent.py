@@ -60,6 +60,7 @@ def call_openrouter(
         model=MODEL,
         messages=messages,
         stream=False,
+        extra_body={"usage": {"include": True}},
         **({"tools": tools} if tools else {}),
         **({"tool_choice": "required"} if tools and require_tool else {}),
     )
