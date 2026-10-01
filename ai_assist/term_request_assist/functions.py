@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 
+from .state import get_category_values
 from ai_assist.functions import (
     TOOLS as SHARED_TOOLS,
     batch_search,
@@ -12,7 +13,6 @@ from ai_assist.functions import (
     search_under_term,
     search_in_children,
 )
-from .state import get_category_values
 
 CATEGORY_SEARCH_MAX_PAGES = 20
 CATEGORY_SEARCH_PAGE_SIZE = 20
@@ -24,10 +24,9 @@ def find_category_terms(ontologyId, category):
     results = {query: [] for query in queries}
     if not queries:
         return results
-    ontology = get_ontology_detail(ontologyId)
-    if not isinstance(ontology, dict):
+    if not isinstance(get_ontology_detail(ontologyId), dict):
         return results
-    seen = set()
+
     jobs = [
         (query, page)
         for index, query in enumerate(queries)
@@ -36,19 +35,21 @@ def find_category_terms(ontologyId, category):
             + (index < CATEGORY_SEARCH_MAX_PAGES % len(queries))
         )
     ]
-
-    def run_search(job):
-        query, page = job
-        return query, search(
-            query,
-            ontologyId,
-            page=page,
-            size=CATEGORY_SEARCH_PAGE_SIZE,
-            validate_ontology=False,
-        )
-
+    seen = set()
     with ThreadPoolExecutor(max_workers=min(5, len(jobs))) as executor:
-        pages = executor.map(run_search, jobs)
+        pages = executor.map(
+            lambda job: (
+                job[0],
+                search(
+                    job[0],
+                    ontologyId,
+                    page=job[1],
+                    size=CATEGORY_SEARCH_PAGE_SIZE,
+                    validate_ontology=False,
+                ),
+            ),
+            jobs,
+        )
     for query, terms in pages:
         if not isinstance(terms, list):
             continue
@@ -61,11 +62,7 @@ def find_category_terms(ontologyId, category):
             if (
                 term.get("type") in ("class", "property")
                 and term_id not in seen
-                and any(
-                    isinstance(value, str)
-                    and value.strip().casefold() in category_values
-                    for value in values
-                )
+                and any(value.strip().casefold() in category_values for value in values)
             ):
                 results[query].append(term)
                 seen.add(term_id)
@@ -95,8 +92,7 @@ TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
             "name": "find_category_terms",
             "description": (
                 "Search paginated results in the selected ontology for exact label or "
-                "synonym matches to the requested category. Use a returned class or "
-                "property as the anchor for structural parent traversal."
+                "synonym matches to the requested category."
             ),
             "parameters": {
                 "type": "object",

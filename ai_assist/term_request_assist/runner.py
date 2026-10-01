@@ -5,8 +5,11 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 
-from .agent import run_term_request_or_search_agent_turn
-from .prompts import SEARCH_AGENT_PROMPT, TERM_REQUEST_AGENT_PROMPT
+from ai_assist.search_agent.prompts import SEARCH_AGENT_PROMPT
+from ai_assist.search_agent.agent import run_agent_turn as run_search_agent_turn
+from ai_assist.term_request_assist.agent import run_term_request_or_search_agent_turn
+
+from ai_assist.term_request_assist.prompts import TERM_REQUEST_AGENT_PROMPT
 from ai_assist.transport import (
     CHANNEL_EVENT_TYPE_AGENT_EVENT,
     READY_WAIT_TIMEOUT_SECONDS,
@@ -171,7 +174,12 @@ def run_conversation(run_id, state):
                 return
 
             add_pending_user_input(messages, run_id)
-            run_term_request_or_search_agent_turn(
+            run_agent_turn = (
+                run_search_agent_turn
+                if response["phase"] == "search"
+                else run_term_request_or_search_agent_turn
+            )
+            run_agent_turn(
                 messages,
                 response,
                 run_id,

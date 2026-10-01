@@ -32,6 +32,7 @@ def initialize_state(response: dict[str, Any]) -> None:
     response.setdefault("pending_ontology_rejection_decision", False)
     response.setdefault("known_terms", [])
     response.setdefault("category_search_complete", False)
+    response.setdefault("category_search_queries", [])
     response.setdefault("category_candidate_nodes", [])
     response.setdefault("category_anchor_nodes", [])
     response.setdefault("category_branch_nodes", [])
@@ -59,6 +60,7 @@ def update_traversal_context(messages: list[dict[str, Any]], response: dict[str,
         f"Visited nodes: {json.dumps(response['visited_nodes'])}\n"
         f"Visited node pages: {json.dumps(response['visited_node_pages'])}\n"
         f"Category search complete: {json.dumps(response['category_search_complete'])}\n"
+        f"Category searches: {json.dumps(response['category_search_queries'])}\n"
         f"Category candidates: {json.dumps(response['category_candidate_nodes'])}\n"
         f"Category anchors: {json.dumps(response['category_anchor_nodes'])}\n"
         f"Active beam: {json.dumps(response['beam_frontier_nodes'])}\n"
@@ -171,7 +173,9 @@ def execute_tool(
     result = functions[function_name](**arguments)
     if function_name == "search_in_children" and isinstance(result, str):
         return _record_beam_error(response, node, result)
-    _record_result(function_name, ontology_id, result, response, node, node_page, root_page)
+    _record_result(
+        function_name, arguments, ontology_id, result, response, node, node_page, root_page
+    )
     return result
 
 
@@ -186,6 +190,7 @@ def restart_ontology_selection(response):
     response["selected_ontology_ids"] = []
     response["known_terms"] = []
     response["category_search_complete"] = False
+    response["category_search_queries"] = []
     response["category_candidate_nodes"] = []
     response["category_anchor_nodes"] = []
     response["category_branch_nodes"] = []
@@ -219,6 +224,7 @@ def restart_parent_search(response):
     response["candidates"] = []
     response["known_terms"] = []
     response["category_search_complete"] = False
+    response["category_search_queries"] = []
     response["category_candidate_nodes"] = []
     response["category_anchor_nodes"] = []
     response["category_branch_nodes"] = []
@@ -247,19 +253,17 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
     if function_name in ("get_roots", "search_in_children") and not response["ontologies_list_call_count"]:
         return "Call ontologies_list before traversing ontologies."
     if function_name == "find_category_terms":
-        if ontology_id not in response["selected_ontology_ids"]:
-            return "Select an ontology before searching for the category."
-        if response["category_search_complete"]:
-            return "The requested category has already been searched."
+        if not response["selected_ontology_ids"]:
+            return "Select an ontology before locating the category term."
     if function_name == "select_category_term":
         if response["category_anchor_nodes"]:
             return "The category term has already been selected."
         if not response["category_search_complete"]:
-            return "Call find_category_terms before selecting the category term."
+            return "Search for the category and all of its synonyms before selecting the category term."
         if arguments.get("iri") not in {
             node["iri"] for node in response["category_candidate_nodes"]
         }:
-            return "Select a category term returned by find_category_terms."
+            return "Select a category term returned by search."
     if function_name == "select_beam_subtrees":
         if response["term_category"] and not response["category_anchor_nodes"]:
             return "Select the category term before starting beam search."
@@ -306,7 +310,7 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
         and response["term_category"]
         and not response["category_search_complete"]
     ):
-        return "Call find_category_terms before traversing the ontology."
+        return "Search for the category and all of its synonyms before traversing the ontology."
     if (
         function_name in ("get_roots", "search_in_children")
         and response["term_category"]
@@ -315,7 +319,7 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
         return "Select the category term before starting beam search."
     if function_name == "get_roots":
         if response["category_anchor_nodes"]:
-            return "Start traversal from a category term returned by find_category_terms."
+            return "Start traversal from a category term returned by search."
         if ontology_id not in response["available_ontology_ids"]:
             return "Select an ontology returned by ontologies_list."
         if ontology_id in response["rejected_ontology_ids"]:
@@ -353,7 +357,9 @@ def _validation_error(function_name, arguments, response, ontology_id, known_ter
     return None
 
 
-def _record_result(function_name, ontology_id, result, response, node, node_page, root_page):
+def _record_result(
+    function_name, arguments, ontology_id, result, response, node, node_page, root_page
+):
     if isinstance(result, str):
         return
     if function_name == "search_in_children" and not _contains_node(
@@ -425,6 +431,50 @@ def _record_known_terms(terms, ontology_id, response):
         known_term = {"ontologyId": ontology_id, "iri": term.get("iri"), "type": term.get("type")}
         if all(isinstance(value, str) for value in known_term.values()) and known_term not in response["known_terms"]:
             response["known_terms"].append(known_term)
+
+
+def category_search_validation_error(arguments, response, pending_queries=()):
+    ontology_id = arguments.get("ontologyId")
+    if ontology_id not in response["selected_ontology_ids"]:
+        return "Select an ontology before searching for the category."
+    if response["category_search_complete"]:
+        return "The requested category has already been searched."
+    query = arguments.get("query")
+    category_queries = {
+        value.casefold() for value in get_category_values(response["term_category"])
+    }
+    if not isinstance(query, str) or query.strip().casefold() not in category_queries:
+        return "Search using the category or one of its synonyms."
+    searched_queries = {
+        value.casefold()
+        for value in [*response["category_search_queries"], *pending_queries]
+    }
+    if query.strip().casefold() in searched_queries:
+        return "This category query has already been searched."
+    return None
+
+
+def record_category_search_result(arguments, ontology_id, result, response):
+    if not isinstance(result, list):
+        return
+    response["category_search_queries"].append(arguments["query"].strip())
+    response["category_search_complete"] = {
+        value.casefold() for value in response["category_search_queries"]
+    } == {
+        value.casefold() for value in get_category_values(response["term_category"])
+    }
+    _record_known_terms(result, ontology_id, response)
+    for term in result:
+        if (
+            isinstance(term, dict)
+            and isinstance(term.get("iri"), str)
+            and term.get("type") in ("class", "property")
+            and not _contains_node(response["category_candidate_nodes"], term)
+        ):
+            response["category_candidate_nodes"].append(
+                {**term, "ontologyId": ontology_id}
+            )
+    response["beam_options_classified"] = not response["category_candidate_nodes"]
 
 
 def _record_beam_options(terms, ontology_id, response, parent=None):

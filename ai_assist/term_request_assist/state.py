@@ -34,7 +34,6 @@ RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS = "search_rejections"
 AWAITING_REJECTION_TERM_REQUEST_SEARCH = "term_request_search"
 
 TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS = 3
-CLIENT_MESSAGE_TYPE_CANCEL = "cancel"
 CLIENT_MESSAGE_TYPE_REJECT = "reject"
 CLIENT_MESSAGE_TYPE_USER_MESSAGE = "user_message"
 CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY = "select_ontology"
@@ -79,6 +78,7 @@ def new_response(phase="term_request"):
         "pending_ontology_rejection_decision": False,
         "known_terms": [],
         "category_search_complete": False,
+        "category_search_queries": [],
         "category_candidate_nodes": [],
         "category_anchor_nodes": [],
         "category_branch_nodes": [],

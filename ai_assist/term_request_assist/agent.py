@@ -1,30 +1,20 @@
 from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
-import os
-import time
 from typing import Any
 
-from openai import OpenAI
-import requests
-
+from ai_assist.model_client import call_openrouter
 from ai_assist.session_logging import record_model_output
-from . import search_agent, structural_agent
+
+from . import structural_agent
 from .functions import (
     TERM_REQUEST_SEARCH_FUNCTIONS,
     TERM_REQUEST_SEARCH_TOOLS,
     get_term_detail,
 )
-from .state import TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
 
 logger = logging.getLogger(__name__)
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ["LLM_API_KEY"],
-)
-MODEL = os.environ["LLM_MODEL"]
-OPENROUTER_GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 MAX_TERM_REQUEST_CLARIFICATIONS = 2
 MAX_ONTOLOGY_SELECTION_FAILURES = 2
 
@@ -46,67 +36,6 @@ TERM_REQUEST_TOOL_NAMES = structural_agent.STRUCTURAL_TOOL_NAMES
 TRAVERSAL_CONTEXT_PREFIX = structural_agent.TRAVERSAL_CONTEXT_PREFIX
 
 
-def _as_dict(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-
-    if hasattr(value, "model_dump"):
-        return value.model_dump(exclude_none=True)
-
-    return dict(value)
-
-
-def call_openrouter(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]],
-    require_tool: bool = False,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        stream=False,
-        extra_body={"usage": {"include": True}},
-        **({"tools": tools} if tools else {}),
-        **({"tool_choice": "required"} if tools and require_tool else {}),
-    )
-    usage = _as_dict(response.usage) if response.usage else {}
-    upstream_cost = (usage.get("cost_details") or {}).get(
-        "upstream_inference_cost"
-    )
-    if usage.get("cost") == 0 and upstream_cost:
-        usage["cost"] = upstream_cost
-    if usage.get("cost") is None or (
-        usage.get("cost") == 0 and usage.get("total_tokens", 0) > 0
-    ):
-        cost = get_generation_cost(response.id)
-        if cost is not None:
-            usage["cost"] = cost
-    return _as_dict(response.choices[0].message), usage
-
-
-def get_generation_cost(generation_id):
-    try:
-        cost = None
-        for delay in (0, 0.5, 1):
-            if delay:
-                time.sleep(delay)
-            response = requests.get(
-                OPENROUTER_GENERATION_URL,
-                params={"id": generation_id},
-                headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
-                timeout=(3.05, 10),
-            )
-            response.raise_for_status()
-            data = response.json().get("data", {})
-            cost = data.get("total_cost") or data.get("usage")
-            if cost:
-                break
-        return cost
-    except Exception:
-        logger.exception("Unable to retrieve OpenRouter cost for %s", generation_id)
-        return None
-
-
 def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
     """Generate a prompt for the assistant to provide feedback on the current step."""
     if fn_name == "batch_search":
@@ -126,11 +55,6 @@ def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
 
 
 def _tool_allowed(fn_name: str, phase: str, response: dict[str, Any]) -> bool:
-    if phase == "search":
-        return (
-            fn_name == "batch_search"
-            and response["search_call_count"] < TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS
-        )
     if response.get("pending_ontology_rejection_decision"):
         return False
     if response.get("allow_ontology_reselection"):
@@ -163,58 +87,8 @@ def build_term_request_agent_input(
     )
 
 
-def build_search_agent_input(description: str) -> str:
-    return f"Search text: {description}"
-
-
-def validate_search_agent_response(
-    content: str, search_results: list[dict[str, Any]]
-) -> tuple[bool, str, str]:
-    try:
-        response = json.loads(content)
-    except (TypeError, json.JSONDecodeError):
-        return False, "", "Return only a valid JSON object with up to five candidates."
-
-    candidates = response.get("candidates") if isinstance(response, dict) else None
-    if not isinstance(candidates, list) or len(candidates) > 5:
-        return False, "", "Return a candidates list containing at most five terms."
-
-    available = {
-        (result["ontologyId"].casefold(), result["iri"]): result
-        for result in search_results
-    }
-    normalized = []
-    candidate_ids = set()
-    for candidate in candidates:
-        if not isinstance(candidate, dict):
-            return False, "", "Each candidate must be a JSON object."
-        label = candidate.get("label")
-        iri = candidate.get("iri")
-        ontology_id = candidate.get("ontologyId") or candidate.get("ontology")
-        if not all(isinstance(value, str) and value.strip() for value in (label, iri, ontology_id)):
-            return False, "", "Each candidate must include label, iri, and ontologyId."
-        candidate_id = (ontology_id.casefold(), iri)
-        if candidate_id in candidate_ids:
-            continue
-        result = available.get(candidate_id)
-        if result is None:
-            return False, "", "Return only candidates provided by the batch_search function."
-        candidate_ids.add(candidate_id)
-        normalized.append(
-            {
-                "label": result["label"],
-                "iri": result["iri"],
-                "ontologyId": result["ontologyId"],
-                "definition": (
-                    result.get("definition", "")
-                    if isinstance(result.get("definition", ""), str)
-                    else ""
-                ),
-            }
-        )
-
-    response["candidates"] = normalized
-    return True, json.dumps(response), ""
+def build_preliminary_search_inputs(label: str, definition: str) -> list[str]:
+    return [f"Search text: {label.strip()}", f"Search text: {definition.strip()}"]
 
 
 def validate_term_request_agent_response(
@@ -424,57 +298,50 @@ def run_term_request_or_search_agent_turn(
     response["progress_feedback"] = ""
     response["progress_feedbacks"] = []
     response["progress_emitted_live"] = False
-    phase = response.get("phase", "term_request")
-    if phase == "search":
-        available_tools = search_agent.available_tools(
+    phase = "term_request"
+    structural_agent.initialize_state(response)
+    structural_agent.update_traversal_context(messages, response)
+    available_tools = [] if response["pending_ontology_rejection_decision"] else (
+        structural_agent.available_tools(
             TERM_REQUEST_SEARCH_TOOLS,
-            response["search_call_count"],
-            TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS,
+            response["ontologies_list_call_count"],
+            response["allow_ontology_reselection"],
+            bool(response["available_ontology_ids"])
+            and not response["selected_ontology_ids"],
         )
-    else:
-        structural_agent.initialize_state(response)
-        structural_agent.update_traversal_context(messages, response)
-        available_tools = [] if response["pending_ontology_rejection_decision"] else (
-            structural_agent.available_tools(
-                TERM_REQUEST_SEARCH_TOOLS,
-                response["ontologies_list_call_count"],
-                response["allow_ontology_reselection"],
-                bool(response["available_ontology_ids"])
-                and not response["selected_ontology_ids"],
-            )
-        )
-        if (
+    )
+    if (
             response["selected_ontology_ids"]
             and response["term_category"]
             and not response["category_search_complete"]
             and not response["allow_ontology_reselection"]
-        ):
+    ):
             available_tools = [
                 tool
                 for tool in available_tools
                 if tool["function"]["name"] == "find_category_terms"
             ]
-        elif response["category_candidate_nodes"] and not response["category_anchor_nodes"]:
+    elif response["category_candidate_nodes"] and not response["category_anchor_nodes"]:
             available_tools = [
                 tool
                 for tool in available_tools
                 if tool["function"]["name"] == "select_category_term"
             ]
-        elif response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
+    elif response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
             available_tools = []
-        elif response["beam_option_nodes"] and not response["beam_options_classified"]:
+    elif response["beam_option_nodes"] and not response["beam_options_classified"]:
             available_tools = [
                 tool
                 for tool in available_tools
                 if tool["function"]["name"] == "select_beam_subtrees"
             ]
-        elif response["beam_frontier_nodes"]:
+    elif response["beam_frontier_nodes"]:
             available_tools = [
                 tool
                 for tool in available_tools
                 if tool["function"]["name"] == "search_in_children"
             ]
-        elif response["category_anchor_nodes"] and response["beam_options_classified"]:
+    elif response["category_anchor_nodes"] and response["beam_options_classified"]:
             available_tools = [
                 tool
                 for tool in available_tools
@@ -610,15 +477,6 @@ def run_term_request_or_search_agent_turn(
             response["needs_user_input"] = True
             return
 
-        if phase == "search" and not response["successful_search_count"]:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": "Use the batch_search function before returning candidates.",
-                }
-            )
-            return
-
         if phase == "term_request" and not response["ontologies_list_call_count"]:
             _require_ontology_list(messages, response)
             return
@@ -644,34 +502,29 @@ def run_term_request_or_search_agent_turn(
             messages.append({"role": "user", "content": feedback})
             return
 
-        if phase == "search":
-            is_valid, final_response, feedback = validate_search_agent_response(
-                content, response["search_results"]
+        if (
+            response["term_category"]
+            and response["category_candidate_nodes"]
+            and not response["category_anchor_nodes"]
+        ):
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Locate an exact category or category-synonym term before returning parent candidates.",
+                }
             )
-        else:
-            if (
-                response["term_category"]
-                and response["category_candidate_nodes"]
-                and not response["category_anchor_nodes"]
-            ):
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "Locate an exact category or category-synonym term before returning parent candidates.",
-                    }
-                )
-                return
-            is_valid, final_response, feedback = validate_term_request_agent_response(
-                content,
-                response["selected_ontology_ids"],
-                response["known_terms"],
-                response["beam_terminal_nodes"],
-                response["beam_frontier_nodes"],
-                response["beam_option_nodes"],
-                response["beam_options_classified"],
-                response["beam_fallback_nodes"],
-                response["rejected_parent_nodes"],
-            )
+            return
+        is_valid, final_response, feedback = validate_term_request_agent_response(
+            content,
+            response["selected_ontology_ids"],
+            response["known_terms"],
+            response["beam_terminal_nodes"],
+            response["beam_frontier_nodes"],
+            response["beam_option_nodes"],
+            response["beam_options_classified"],
+            response["beam_fallback_nodes"],
+            response["rejected_parent_nodes"],
+        )
         if is_valid:
             temp = json.loads(final_response)
             response["candidates"] = temp["candidates"]
@@ -735,17 +588,9 @@ def run_term_request_or_search_agent_turn(
                 and args.get("ontologyId") not in response["selected_ontology_ids"]
             )
             try:
-                if phase == "search":
-                    result = search_agent.execute_batch_search(
-                        args,
-                        response,
-                        TERM_REQUEST_SEARCH_FUNCTIONS[fn_name],
-                        TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS,
-                    )
-                else:
-                    result = structural_agent.execute_tool(
-                        fn_name, args, response, TERM_REQUEST_SEARCH_FUNCTIONS
-                    )
+                result = structural_agent.execute_tool(
+                    fn_name, args, response, TERM_REQUEST_SEARCH_FUNCTIONS
+                )
             except Exception:
                 logger.exception("AI assist tool %s failed", fn_name)
                 result = {"error": "Unable to complete the ontology lookup."}

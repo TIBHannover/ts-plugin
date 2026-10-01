@@ -1,0 +1,1 @@
+"""Standalone terminology search workflow."""

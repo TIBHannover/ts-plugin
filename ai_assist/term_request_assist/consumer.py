@@ -10,7 +10,6 @@ from ai_assist.transport import (
     CHANNEL_EVENT_TYPE_AGENT_EVENT,
     REDIS_TRUE_VALUE,
     RESUME_TTL_SECONDS,
-    RUN_REDIS_KEY_CANCEL,
     RUN_REDIS_KEY_INPUT,
     RUN_REDIS_KEY_RESUMING,
     RUN_REDIS_KEY_STATE,
@@ -20,7 +19,6 @@ from ai_assist.transport import (
 )
 from .state import (
     AWAITING_REJECTION_TERM_REQUEST_SEARCH,
-    CLIENT_MESSAGE_TYPE_CANCEL,
     CLIENT_MESSAGE_TYPE_REJECT,
     CLIENT_MESSAGE_TYPE_USER_MESSAGE,
     CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY,
@@ -36,7 +34,6 @@ from .state import (
 
 
 class TermRequestSearchClientMessage:
-    CANCEL = CLIENT_MESSAGE_TYPE_CANCEL
     REJECT = CLIENT_MESSAGE_TYPE_REJECT
     USER_MESSAGE = CLIENT_MESSAGE_TYPE_USER_MESSAGE
     SELECT_ONTOLOGY = CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY
@@ -51,16 +48,13 @@ class TermRequestSearchClientMessage:
             return None
 
         message_type = data.get("type")
-        if message_type in (cls.CANCEL, cls.REJECT):
+        if message_type == cls.REJECT:
             return cls(message_type)
         if message_type == cls.USER_MESSAGE and isinstance(data.get("message"), str):
             return cls(message_type, data["message"])
         if message_type == cls.SELECT_ONTOLOGY and isinstance(data.get("ontologyId"), str):
             return cls(message_type, data["ontologyId"])
         return None
-
-    def is_cancel(self):
-        return self.message_type == self.CANCEL
 
     def is_reject(self):
         return self.message_type == self.REJECT
@@ -85,13 +79,7 @@ class TermRequestSearchMessageHandler:
         self.consumer = consumer
 
     async def handle(self, message):
-        if message.is_cancel():
-            await sync_to_async(redis_client.setex)(
-                run_redis_key(self.consumer.run_id, RUN_REDIS_KEY_CANCEL),
-                RUN_TTL_SECONDS,
-                REDIS_TRUE_VALUE,
-            )
-        elif message.is_reject():
+        if message.is_reject():
             await self.handle_rejection()
         elif message.is_user_message():
             await self.handle_user_message(message)
@@ -318,3 +306,17 @@ class TermRequestSearchMessageHandler:
                 "message": "Unable to resume assistant.",
             }
         )
+
+
+async def handle_client_message(consumer, data):
+    message = TermRequestSearchClientMessage.from_data(data)
+    if message is None:
+        await consumer.send_json(
+            {
+                "type": SERVER_MESSAGE_TYPE_ERROR,
+                "message": "Invalid message. Use 'cancel', 'reject', or "
+                "'user_message' with a string 'message'.",
+            }
+        )
+        return
+    await TermRequestSearchMessageHandler(consumer).handle(message)
