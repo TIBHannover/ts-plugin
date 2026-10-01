@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-from difflib import SequenceMatcher
 from functools import partial
 import logging
 import requests
@@ -16,7 +15,6 @@ TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
 DEFNITION_MAX_LENGTH = 300
 REQUEST_TIMEOUT = (3.05, 10)
 CHILD_SEARCH_PAGE_SIZE = 1000
-CHILD_SEARCH_MAX_PAGES = 20
 
 
 def search(
@@ -26,6 +24,7 @@ def search(
     page = 0,
     size = 20,
     validate_ontology = True,
+    exact_match = False
 ) -> list[dict[str, Any]] | str:
     try:
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -39,6 +38,7 @@ def search(
             "lang": "en",
             "exclusive": "true",
             "facetFields": "type ontologyId",
+            "exactMatch": exact_match
         }
         if ontologyId and validate_ontology:
             onto_details = get_ontology_detail(ontologyId)
@@ -217,12 +217,10 @@ def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
         return f"Error: no children found for {iri}"
 
 
-def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
+def search_in_children(iri: str, ontologyId: str, term_type: str):
     try:
         if term_type not in ("class", "property"):
             return "Error: type of a term has to be either class or property."
-        if not isinstance(query, str) or not query.strip():
-            return "Error: query must be a non-empty string"
 
         entity_type = "classes" if term_type == "class" else "properties"
         encoded_iri = urllib.parse.quote(urllib.parse.quote(iri, safe=""), safe="")
@@ -230,27 +228,7 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
             f"{TS_BASE_URL}ontologies/{ontologyId}/{entity_type}/{encoded_iri}/"
             "hierarchicalChildren"
         )
-        normalized_query = query.casefold().strip()
-
-        def score(child):
-            synonyms = child.get("synonym", [])
-            if isinstance(synonyms, str):
-                synonyms = [synonyms]
-            values = [convert_to_str(child.get("label", "")), *synonyms]
-            scores = (
-                (
-                    1.0
-                    if value.casefold().strip() == normalized_query
-                    else SequenceMatcher(
-                        None, normalized_query, value.casefold().strip()
-                    ).ratio()
-                )
-                for value in values
-                if isinstance(value, str) and value.strip()
-            )
-            return max(scores, default=0)
-
-        matches = []
+        children = []
         page = 0
         total_pages = 1
         while page < total_pages:
@@ -267,44 +245,41 @@ def search_in_children(query: str, iri: str, ontologyId: str, term_type: str):
             if page == 0:
                 page_data = response.get("page", {})
                 total_pages = (
-                    page_data.get("totalPages", 1)
+                    page_data.get("totalPages")
                     if isinstance(page_data, dict)
-                    else response.get("totalPages", 1)
+                    else None
                 )
+                if total_pages is None:
+                    total_pages = response.get("totalPages", 1)
                 if (
                     isinstance(total_pages, bool)
                     or not isinstance(total_pages, int)
-                    or total_pages < 1
+                    or total_pages < 0
                 ):
                     return f"Error: invalid child pagination for {iri}"
-                if total_pages > CHILD_SEARCH_MAX_PAGES:
-                    return f"Error: too many children to search safely for {iri}"
-            children = response.get("elements", [])
-            if not isinstance(children, list) or len(children) > CHILD_SEARCH_PAGE_SIZE:
+            page_children = response.get("elements", [])
+            if (
+                not isinstance(page_children, list)
+                or len(page_children) > CHILD_SEARCH_PAGE_SIZE
+            ):
                 return f"Error: invalid child page for {iri}"
-            for child in children:
-                matches.append((score(child), len(matches), child))
+            children.extend(page_children)
             page += 1
-        if not matches:
-            return []
         return [
             {
-                "label": convert_to_str(match["label"]),
-                "iri": match["iri"],
-                "definition": convert_to_str(match.get("definition", ""))[
+                "label": convert_to_str(child["label"]),
+                "iri": child["iri"],
+                "definition": convert_to_str(child.get("definition", ""))[
                     :DEFNITION_MAX_LENGTH
                 ],
-                "ontologyId": match["ontologyId"],
-                "synonym": match.get("synonym", []),
-                "type": get_term_type(match),
-                "score": score,
+                "ontologyId": child["ontologyId"],
+                "synonym": child.get("synonym", []),
+                "type": get_term_type(child),
             }
-            for score, _, match in sorted(
-                matches, key=lambda item: (-item[0], item[1])
-            )[:5]
+            for child in children
         ]
     except Exception:
-        logger.exception("Unable to search children for %s in %s", iri, ontologyId)
+        logger.exception("Unable to load children for %s in %s", iri, ontologyId)
         return f"Error: no children found for {iri}"
 
 
@@ -479,20 +454,19 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_in_children",
-            "description": "Search all direct children of a class or property locally and return the five closest matching children for beam traversal. The upstream API does not support child search. Results include label, IRI, definition, ontology ID, synonyms, term type, and relevance score.",
+            "description": "Fetch and merge every page of direct children for a class or property so the model can choose the best terms for beam traversal. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "iri": {"type": "string"},
                     "ontologyId": {"type": "string"},
-                    "query": {"type": "string"},
                     "term_type": {
                         "type": "string",
                         "enum": ["class", "property"],
                         "description": "Type of the parent term, as returned by another term tool.",
                     },
                 },
-                "required": ["query", "iri", "ontologyId", "term_type"],
+                "required": ["iri", "ontologyId", "term_type"],
             },
         },
     },

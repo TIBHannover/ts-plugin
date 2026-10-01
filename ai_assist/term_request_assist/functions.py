@@ -1,6 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
-
-from .state import get_category_values
 from ai_assist.functions import (
     TOOLS as SHARED_TOOLS,
     batch_search,
@@ -9,121 +6,25 @@ from ai_assist.functions import (
     get_roots,
     get_term_detail,
     ontologies_list,
-    search,
     search_under_term,
     search_in_children,
 )
 
-CATEGORY_SEARCH_MAX_PAGES = 20
-CATEGORY_SEARCH_PAGE_SIZE = 20
-
-
-def find_category_terms(ontologyId, category):
-    queries = get_category_values(category)
-    category_values = {query.casefold() for query in queries}
-    results = {query: [] for query in queries}
-    if not queries:
-        return results
-    if not isinstance(get_ontology_detail(ontologyId), dict):
-        return results
-
-    jobs = [
-        (query, page)
-        for index, query in enumerate(queries)
-        for page in range(
-            CATEGORY_SEARCH_MAX_PAGES // len(queries)
-            + (index < CATEGORY_SEARCH_MAX_PAGES % len(queries))
-        )
-    ]
-    seen = set()
-    with ThreadPoolExecutor(max_workers=min(5, len(jobs))) as executor:
-        pages = executor.map(
-            lambda job: (
-                job[0],
-                search(
-                    job[0],
-                    ontologyId,
-                    page=job[1],
-                    size=CATEGORY_SEARCH_PAGE_SIZE,
-                    validate_ontology=False,
-                ),
-            ),
-            jobs,
-        )
-    for query, terms in pages:
-        if not isinstance(terms, list):
-            continue
-        for term in terms:
-            synonyms = term.get("synonym", [])
-            if isinstance(synonyms, str):
-                synonyms = [synonyms]
-            values = _text_values(term.get("label", "")) + _text_values(synonyms)
-            term_id = (term.get("ontologyId"), term.get("iri"))
-            if (
-                term.get("type") in ("class", "property")
-                and term_id not in seen
-                and any(value.strip().casefold() in category_values for value in values)
-            ):
-                results[query].append(term)
-                seen.add(term_id)
-    return results
-
-
-def _text_values(value):
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, str)]
-    return []
-
-
 def select_beam_subtrees(options):
     return options
-
-
-def select_category_term(iri):
-    return iri
 
 
 TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
     {
         "type": "function",
         "function": {
-            "name": "find_category_terms",
-            "description": (
-                "Search paginated results in the selected ontology for exact label or "
-                "synonym matches to the requested category."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {"ontologyId": {"type": "string"}},
-                "required": ["ontologyId"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "select_category_term",
-            "description": (
-                "Select exactly one returned category term as the category anchor. "
-                "The beam search starts only after this selection."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {"iri": {"type": "string"}},
-                "required": ["iri"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "select_beam_subtrees",
             "description": (
-                "Classify every current beam option exactly once as active, terminal, "
-                "or discard. The controller globally ranks all non-discarded options "
-                "and retains at most five."
+                "Select up to three current beam options, ordered from best to least "
+                "suitable, and classify each as active or terminal. Unselected options "
+                "are discarded. Previously selected terminal parents persist, so fill "
+                "only the remaining slots. For each option, explicitly judge whether "
+                "it is semantically a type or subtype of the requested category."
             ),
             "parameters": {
                 "type": "object",
@@ -136,12 +37,17 @@ TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
                                 "iri": {"type": "string"},
                                 "status": {
                                     "type": "string",
-                                    "enum": ["active", "terminal", "discard"],
+                                    "enum": ["active", "terminal"],
+                                },
+                                "category_compatible": {
+                                    "type": "boolean",
+                                    "description": "Whether this term is semantically a type or subtype of the requested category.",
                                 },
                             },
-                            "required": ["iri", "status"],
+                            "required": ["iri", "status", "category_compatible"],
                         },
                         "minItems": 1,
+                        "maxItems": 3,
                     }
                 },
                 "required": ["options"],
@@ -158,7 +64,5 @@ TERM_REQUEST_SEARCH_FUNCTIONS = {
     "get_ontology_detail": get_ontology_detail,
     "ontologies_list": ontologies_list,
     "search_under_term": search_under_term,
-    "find_category_terms": find_category_terms,
-    "select_category_term": select_category_term,
     "select_beam_subtrees": select_beam_subtrees,
 }

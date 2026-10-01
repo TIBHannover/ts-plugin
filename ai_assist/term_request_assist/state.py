@@ -77,11 +77,6 @@ def new_response(phase="term_request"):
         "allow_ontology_reselection": False,
         "pending_ontology_rejection_decision": False,
         "known_terms": [],
-        "category_search_complete": False,
-        "category_search_queries": [],
-        "category_candidate_nodes": [],
-        "category_anchor_nodes": [],
-        "category_branch_nodes": [],
         "beam_frontier_nodes": [],
         "beam_option_nodes": [],
         "beam_terminal_nodes": [],
@@ -91,6 +86,7 @@ def new_response(phase="term_request"):
         "beam_options_classified": False,
         "beam_node_errors": [],
         "visited_root_pages": [],
+        "root_search_complete": {"class": False, "property": False},
         "visited_nodes": [],
         "visited_node_pages": [],
         "successful_search_count": 0,
@@ -131,6 +127,14 @@ def normalize_state(state):
         )
     for key, value in new_response().items():
         response.setdefault(key, value)
+    if not isinstance(response["root_search_complete"], dict):
+        complete = bool(response["root_search_complete"])
+        response["root_search_complete"] = {
+            "class": complete,
+            "property": complete,
+        }
+    for term_type in ("class", "property"):
+        response["root_search_complete"].setdefault(term_type, False)
     if not response["term_category"]:
         response["term_category"] = get_term_category(state.get("input_text", ""))
     state.setdefault("steps", 0)
@@ -146,11 +150,3 @@ def get_term_category(input_text):
         ),
         "",
     )
-
-
-def get_category_values(category):
-    return [
-        value.strip()
-        for value in category.replace(":", ",", 1).split(",")
-        if value.strip()
-    ]

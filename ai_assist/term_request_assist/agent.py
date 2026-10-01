@@ -23,13 +23,11 @@ FUNCTION_LABELS = {
     "batch_search": "Searching terminology",
     "search_under_term": "Searching related terms",
     "get_term_detail": "Checking term details",
-    "search_in_children": "Searching child terms",
+    "search_in_children": "Loading child terms",
     "get_roots": "Checking root terms",
     "get_individuals": "Checking individuals",
     "get_ontology_detail": "Checking ontology details",
     "ontologies_list": "Listing ontologies",
-    "find_category_terms": "Locating the category subtree",
-    "select_category_term": "Selecting the category subtree",
     "select_beam_subtrees": "Selecting traversal subtrees",
 }
 TERM_REQUEST_TOOL_NAMES = structural_agent.STRUCTURAL_TOOL_NAMES
@@ -45,7 +43,6 @@ def progress_feedback(fn_name: str, args: dict[str, Any]) -> str:
     if fn_name == "ontologies_list":
         return FUNCTION_LABELS[fn_name]
     if fn_name in (
-        "find_category_terms",
         "get_ontology_detail",
         "get_roots",
         "get_individuals",
@@ -63,14 +60,6 @@ def _tool_allowed(fn_name: str, phase: str, response: dict[str, Any]) -> bool:
         return fn_name == "ontologies_list"
     if response["available_ontology_ids"] and not response["selected_ontology_ids"]:
         return False
-    if (
-        response["selected_ontology_ids"]
-        and response["term_category"]
-        and not response["category_search_complete"]
-    ):
-        return fn_name == "find_category_terms"
-    if response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
-        return bool(response.get("category_candidate_nodes")) and fn_name == "select_category_term"
     return fn_name in TERM_REQUEST_TOOL_NAMES - {"ontologies_list"} or (
         fn_name == "ontologies_list" and response["allow_ontology_reselection"]
     )
@@ -108,26 +97,30 @@ def validate_term_request_agent_response(
         return (
             False,
             "",
-            "Your final response is not valid JSON. Return only a JSON object with up to five candidates.",
+            "Your final response is not valid JSON. Return only a JSON object with up to three candidates.",
         )
 
     if not isinstance(response, dict):
         return (
             False,
             "",
-            "Your final response must be a JSON object with up to five candidates.",
+            "Your final response must be a JSON object with up to three candidates.",
         )
 
     candidates = response.get("candidates")
-    if not isinstance(candidates, list) or len(candidates) > 5:
-        return False, "", "Your final response must include at most five candidates."
+    if not isinstance(candidates, list) or len(candidates) > 3:
+        return False, "", "Your final response must include at most three candidates."
     if beam_options_classified is False or beam_frontier_nodes:
-        return False, "", "Classify every beam option and finish or discard every active subtree."
+        return False, "", "Select the best beam options and finish or discard every active subtree."
     if not candidates:
+        compatible_fallback_nodes = [
+            node for node in (beam_fallback_nodes or [])
+            if node.get("category_compatible")
+        ]
         if beam_terminal_nodes or (
             beam_options_classified is None and beam_option_nodes
         ) or (
-            beam_fallback_nodes
+            compatible_fallback_nodes
             and beam_options_classified
             and not beam_frontier_nodes
             and not beam_option_nodes
@@ -135,9 +128,15 @@ def validate_term_request_agent_response(
             return False, "", "Finish or discard every active subtree and return all terminal parent candidates."
         return True, json.dumps(response), ""
 
+    if beam_terminal_nodes and any(
+        not node.get("category_compatible") for node in beam_terminal_nodes
+    ):
+        return False, "", "Return only parents that semantically match the requested category."
+
     fallback_nodes = (
-        beam_fallback_nodes
+        [node for node in beam_fallback_nodes if node.get("category_compatible")]
         if not beam_terminal_nodes
+        and beam_fallback_nodes
         and beam_options_classified
         and not beam_frontier_nodes
         and not beam_option_nodes
@@ -312,23 +311,17 @@ def run_term_request_or_search_agent_turn(
     )
     if (
             response["selected_ontology_ids"]
-            and response["term_category"]
-            and not response["category_search_complete"]
+            and len(response["beam_terminal_nodes"]) < structural_agent.BEAM_WIDTH
+            and not all(response["root_search_complete"].values())
+            and not response["beam_option_nodes"]
+            and not response["beam_frontier_nodes"]
             and not response["allow_ontology_reselection"]
     ):
             available_tools = [
                 tool
                 for tool in available_tools
-                if tool["function"]["name"] == "find_category_terms"
+                if tool["function"]["name"] == "get_roots"
             ]
-    elif response["category_candidate_nodes"] and not response["category_anchor_nodes"]:
-            available_tools = [
-                tool
-                for tool in available_tools
-                if tool["function"]["name"] == "select_category_term"
-            ]
-    elif response["term_category"] and response["category_search_complete"] and not response["category_anchor_nodes"]:
-            available_tools = []
     elif response["beam_option_nodes"] and not response["beam_options_classified"]:
             available_tools = [
                 tool
@@ -341,12 +334,17 @@ def run_term_request_or_search_agent_turn(
                 for tool in available_tools
                 if tool["function"]["name"] == "search_in_children"
             ]
-    elif response["category_anchor_nodes"] and response["beam_options_classified"]:
+    elif response["selected_ontology_ids"] and response["beam_options_classified"]:
+            final_nodes = response["beam_terminal_nodes"] or [
+                node
+                for node in response["beam_fallback_nodes"]
+                if node.get("category_compatible")
+            ]
             available_tools = [
                 tool
                 for tool in available_tools
                 if tool["function"]["name"] == "get_term_detail"
-            ] if response["beam_terminal_nodes"] or response["beam_fallback_nodes"] else []
+            ] if final_nodes else []
     message, usage = call_openrouter(
         messages, available_tools, response.get("force_tool_call", False)
     )
@@ -502,18 +500,6 @@ def run_term_request_or_search_agent_turn(
             messages.append({"role": "user", "content": feedback})
             return
 
-        if (
-            response["term_category"]
-            and response["category_candidate_nodes"]
-            and not response["category_anchor_nodes"]
-        ):
-            messages.append(
-                {
-                    "role": "user",
-                    "content": "Locate an exact category or category-synonym term before returning parent candidates.",
-                }
-            )
-            return
         is_valid, final_response, feedback = validate_term_request_agent_response(
             content,
             response["selected_ontology_ids"],
