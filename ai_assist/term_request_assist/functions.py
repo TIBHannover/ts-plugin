@@ -10,52 +10,39 @@ from ai_assist.functions import (
     search_in_children,
 )
 
-def select_beam_subtrees(options):
-    return options
+
+def add_parent_candidate(iri, category_compatible):
+    return {"iri": iri, "category_compatible": category_compatible}
 
 
 TERM_REQUEST_SEARCH_TOOLS = SHARED_TOOLS + [
     {
         "type": "function",
         "function": {
-            "name": "select_beam_subtrees",
+            "name": "add_parent_candidate",
             "description": (
-                "Select up to three current beam options, ordered from best to least "
-                "suitable, and classify each as active or terminal. Unselected options "
-                "are discarded. Previously selected terminal parents persist, so fill "
-                "only the remaining slots. For each option, explicitly judge whether "
-                "it is semantically a type or subtype of the requested category."
+                "Add a returned ontology term to the parent-candidate list. A candidate "
+                "can be at any ontology depth and does not need to be a leaf."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "options": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "iri": {"type": "string"},
-                                "status": {
-                                    "type": "string",
-                                    "enum": ["active", "terminal"],
-                                },
-                                "category_compatible": {
-                                    "type": "boolean",
-                                    "description": "Whether this term is semantically a type or subtype of the requested category.",
-                                },
-                            },
-                            "required": ["iri", "status", "category_compatible"],
-                        },
-                        "minItems": 1,
-                        "maxItems": 3,
-                    }
+                    "iri": {"type": "string"},
+                    "category_compatible": {
+                        "type": "boolean",
+                        "description": (
+                            "Whether the term is semantically a type or subtype of the "
+                            "requested category. Must be true for a parent candidate."
+                        ),
+                    },
                 },
-                "required": ["options"],
+                "required": ["iri", "category_compatible"],
             },
         },
-    },
+    }
 ]
 TERM_REQUEST_SEARCH_FUNCTIONS = {
+    "add_parent_candidate": add_parent_candidate,
     "batch_search": batch_search,
     "get_term_detail": get_term_detail,
     "search_in_children": search_in_children,
@@ -64,5 +51,4 @@ TERM_REQUEST_SEARCH_FUNCTIONS = {
     "get_ontology_detail": get_ontology_detail,
     "ontologies_list": ontologies_list,
     "search_under_term": search_under_term,
-    "select_beam_subtrees": select_beam_subtrees,
 }

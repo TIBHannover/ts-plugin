@@ -1,3 +1,5 @@
+from django.conf import settings
+
 from ai_assist.transport import (
     RUN_REDIS_KEY_CANCEL,
     RUN_REDIS_KEY_INPUT,
@@ -77,18 +79,14 @@ def new_response(phase="term_request"):
         "allow_ontology_reselection": False,
         "pending_ontology_rejection_decision": False,
         "known_terms": [],
-        "beam_frontier_nodes": [],
-        "beam_option_nodes": [],
-        "beam_terminal_nodes": [],
-        "beam_fallback_nodes": [],
-        "expanded_beam_nodes": [],
+        "candidate_parent_nodes": [],
+        "candidate_parent_limit": settings.TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES,
+        "child_lookup_errors": [],
+        "unavailable_nodes": [],
         "rejected_parent_nodes": [],
-        "beam_options_classified": False,
-        "beam_node_errors": [],
         "visited_root_pages": [],
         "root_search_complete": {"class": False, "property": False},
         "visited_nodes": [],
-        "visited_node_pages": [],
         "successful_search_count": 0,
         "progress_feedback": "",
         "progress_feedbacks": [],
@@ -125,8 +123,19 @@ def normalize_state(state):
                 "",
             ),
         )
+    restart_traversal = (
+        state.get("workflow") == "term_request"
+        and response.get("phase", "term_request") == "term_request"
+        and "candidate_parent_nodes" not in response
+    )
     for key, value in new_response().items():
         response.setdefault(key, value)
+    if restart_traversal:
+        response["known_terms"] = []
+        response["visited_root_pages"] = []
+        response["root_search_complete"] = {"class": False, "property": False}
+        response["visited_nodes"] = []
+        state["restart_term_request_conversation"] = True
     if not isinstance(response["root_search_complete"], dict):
         complete = bool(response["root_search_complete"])
         response["root_search_complete"] = {

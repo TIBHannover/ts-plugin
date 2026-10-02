@@ -28,7 +28,7 @@ FUNCTION_LABELS = {
     "get_individuals": "Checking individuals",
     "get_ontology_detail": "Checking ontology details",
     "ontologies_list": "Listing ontologies",
-    "select_beam_subtrees": "Selecting traversal subtrees",
+    "add_parent_candidate": "Adding parent candidate",
 }
 TERM_REQUEST_TOOL_NAMES = structural_agent.STRUCTURAL_TOOL_NAMES
 TRAVERSAL_CONTEXT_PREFIX = structural_agent.TRAVERSAL_CONTEXT_PREFIX
@@ -84,11 +84,8 @@ def validate_term_request_agent_response(
     content: str,
     selected_ontology_ids: list[str] | None = None,
     known_terms: list[dict[str, str]] | None = None,
-    beam_terminal_nodes: list[dict[str, str]] | None = None,
-    beam_frontier_nodes: list[dict[str, str]] | None = None,
-    beam_option_nodes: list[dict[str, str]] | None = None,
-    beam_options_classified: bool | None = None,
-    beam_fallback_nodes: list[dict[str, str]] | None = None,
+    candidate_parent_nodes: list[dict[str, str]] | None = None,
+    candidate_parent_limit: int = 3,
     rejected_parent_nodes: list[dict[str, str]] | None = None,
 ) -> tuple[bool, str, str]:
     try:
@@ -97,51 +94,24 @@ def validate_term_request_agent_response(
         return (
             False,
             "",
-            "Your final response is not valid JSON. Return only a JSON object with up to three candidates.",
+            "Your final response is not valid JSON. Return only a JSON object with "
+            f"up to {candidate_parent_limit} candidates.",
         )
 
     if not isinstance(response, dict):
         return (
             False,
             "",
-            "Your final response must be a JSON object with up to three candidates.",
+            f"Your final response must be a JSON object with up to {candidate_parent_limit} candidates.",
         )
 
     candidates = response.get("candidates")
-    if not isinstance(candidates, list) or len(candidates) > 3:
-        return False, "", "Your final response must include at most three candidates."
-    if beam_options_classified is False or beam_frontier_nodes:
-        return False, "", "Select the best beam options and finish or discard every active subtree."
+    if not isinstance(candidates, list) or len(candidates) > candidate_parent_limit:
+        return False, "", f"Your final response must include at most {candidate_parent_limit} candidates."
     if not candidates:
-        compatible_fallback_nodes = [
-            node for node in (beam_fallback_nodes or [])
-            if node.get("category_compatible")
-        ]
-        if beam_terminal_nodes or (
-            beam_options_classified is None and beam_option_nodes
-        ) or (
-            compatible_fallback_nodes
-            and beam_options_classified
-            and not beam_frontier_nodes
-            and not beam_option_nodes
-        ):
-            return False, "", "Finish or discard every active subtree and return all terminal parent candidates."
+        if candidate_parent_nodes:
+            return False, "", "Return every parent candidate added during traversal."
         return True, json.dumps(response), ""
-
-    if beam_terminal_nodes and any(
-        not node.get("category_compatible") for node in beam_terminal_nodes
-    ):
-        return False, "", "Return only parents that semantically match the requested category."
-
-    fallback_nodes = (
-        [node for node in beam_fallback_nodes if node.get("category_compatible")]
-        if not beam_terminal_nodes
-        and beam_fallback_nodes
-        and beam_options_classified
-        and not beam_frontier_nodes
-        and not beam_option_nodes
-        else None
-    )
 
     candidate_ids = set()
     for index, candidate in enumerate(candidates):
@@ -184,11 +154,6 @@ def validate_term_request_agent_response(
             for node in rejected_parent_nodes
         ):
             return False, "", "Do not return a parent term the user rejected."
-        if beam_terminal_nodes is not None and not any(
-            node.get("ontologyId") == ontology_id and node.get("iri") == parent_iri
-            for node in (beam_terminal_nodes or fallback_nodes or [])
-        ):
-            return False, "", "Return only parent candidates in the surviving beam."
         candidate_id = (ontology_id.casefold(), parent_iri)
         if candidate_id in candidate_ids:
             return False, "", "Return distinct candidates."
@@ -199,16 +164,15 @@ def validate_term_request_agent_response(
             "parent_iri": parent_iri,
         }
 
-    if beam_terminal_nodes and candidate_ids != {
+    expected_candidate_ids = {
         (node["ontologyId"].casefold(), node["iri"])
-        for node in beam_terminal_nodes
-    }:
-        return False, "", "Return every terminal parent candidate."
-    if fallback_nodes and candidate_ids != {
-        (node["ontologyId"].casefold(), node["iri"])
-        for node in fallback_nodes
-    }:
-        return False, "", "Return every exhausted-branch fallback candidate."
+        for node in (candidate_parent_nodes or [])
+        if node.get("category_compatible") is True
+    }
+    if len(expected_candidate_ids) != len(candidate_parent_nodes or []):
+        return False, "", "Return only recorded parents that match the requested category."
+    if candidate_ids != expected_candidate_ids:
+        return False, "", "Return every parent candidate added during traversal and no others."
 
     with ThreadPoolExecutor(max_workers=len(candidates)) as executor:
         term_details = executor.map(
@@ -309,42 +273,18 @@ def run_term_request_or_search_agent_turn(
             and not response["selected_ontology_ids"],
         )
     )
-    if (
-            response["selected_ontology_ids"]
-            and len(response["beam_terminal_nodes"]) < structural_agent.BEAM_WIDTH
-            and not all(response["root_search_complete"].values())
-            and not response["beam_option_nodes"]
-            and not response["beam_frontier_nodes"]
-            and not response["allow_ontology_reselection"]
+    if len(response["candidate_parent_nodes"]) >= response["candidate_parent_limit"]:
+        available_tools = []
+    elif (
+        response["selected_ontology_ids"]
+        and structural_agent.initial_root_types_remaining(response)
+        and not response["allow_ontology_reselection"]
     ):
-            available_tools = [
-                tool
-                for tool in available_tools
-                if tool["function"]["name"] == "get_roots"
-            ]
-    elif response["beam_option_nodes"] and not response["beam_options_classified"]:
-            available_tools = [
-                tool
-                for tool in available_tools
-                if tool["function"]["name"] == "select_beam_subtrees"
-            ]
-    elif response["beam_frontier_nodes"]:
-            available_tools = [
-                tool
-                for tool in available_tools
-                if tool["function"]["name"] == "search_in_children"
-            ]
-    elif response["selected_ontology_ids"] and response["beam_options_classified"]:
-            final_nodes = response["beam_terminal_nodes"] or [
-                node
-                for node in response["beam_fallback_nodes"]
-                if node.get("category_compatible")
-            ]
-            available_tools = [
-                tool
-                for tool in available_tools
-                if tool["function"]["name"] == "get_term_detail"
-            ] if final_nodes else []
+        available_tools = [
+            tool
+            for tool in available_tools
+            if tool["function"]["name"] == "get_roots"
+        ]
     message, usage = call_openrouter(
         messages, available_tools, response.get("force_tool_call", False)
     )
@@ -500,15 +440,26 @@ def run_term_request_or_search_agent_turn(
             messages.append({"role": "user", "content": feedback})
             return
 
+        remaining_root_types = structural_agent.initial_root_types_remaining(response)
+        if response["selected_ontology_ids"] and remaining_root_types:
+            response["force_tool_call"] = True
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Call get_roots at page 0 for the missing root types before "
+                        f"returning candidates: {', '.join(sorted(remaining_root_types))}."
+                    ),
+                }
+            )
+            return
+
         is_valid, final_response, feedback = validate_term_request_agent_response(
             content,
             response["selected_ontology_ids"],
             response["known_terms"],
-            response["beam_terminal_nodes"],
-            response["beam_frontier_nodes"],
-            response["beam_option_nodes"],
-            response["beam_options_classified"],
-            response["beam_fallback_nodes"],
+            response["candidate_parent_nodes"],
+            response["candidate_parent_limit"],
             response["rejected_parent_nodes"],
         )
         if is_valid:
@@ -535,6 +486,7 @@ def run_term_request_or_search_agent_turn(
         return
 
     response["invalid_final_response_count"] = 0
+    traversal_call_seen = False
     for tool_call in tool_calls:
         response["progress_feedback"] = ""
         fn_name = tool_call["function"]["name"]
@@ -559,7 +511,13 @@ def run_term_request_or_search_agent_turn(
                     else f"{fn_name} is not available for {phase}."
                 )
             }
+        elif fn_name in ("get_roots", "search_in_children") and traversal_call_seen:
+            result = {
+                "error": "Use only one root or child traversal call per model turn."
+            }
         else:
+            if fn_name in ("get_roots", "search_in_children"):
+                traversal_call_seen = True
             response["is_final"] = False
             current_progress = progress_feedback(fn_name, args)
             _report_progress(response, current_progress, progress_callback)

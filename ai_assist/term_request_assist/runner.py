@@ -105,6 +105,12 @@ def resume_term_request_search_agent(run_id):
         if not state_json:
             return
         state = normalize_state(json.loads(state_json))
+        if state.pop("restart_term_request_conversation", False):
+            state["messages"] = [
+                {"role": "system", "content": TERM_REQUEST_AGENT_PROMPT},
+                {"role": "user", "content": state["input_text"]},
+            ]
+            state["steps"] = 0
         rejection_key = (
             RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS
             if state["response"].get("phase") == "search"

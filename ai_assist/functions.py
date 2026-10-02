@@ -454,7 +454,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_in_children",
-            "description": "Fetch and merge every page of direct children for a class or property so the model can choose the best terms for beam traversal. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
+            "description": "Fetch and merge every page of direct children for a class or property. Results include label, IRI, definition, ontology ID, synonyms, and term type.",
             "parameters": {
                 "type": "object",
                 "properties": {
