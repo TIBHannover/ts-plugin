@@ -1,6 +1,7 @@
 from celery import shared_task
 import json
 
+from .annotator_assist.tasks import annotate_text_task
 from .redis_client import redis_client
 from .transport import RUN_REDIS_KEY_STATE, run_redis_key
 from .ontology_harvester import harvest_ontologies

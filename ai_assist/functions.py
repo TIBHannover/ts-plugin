@@ -24,7 +24,8 @@ def search(
     page = 0,
     size = 20,
     validate_ontology = True,
-    exact_match = False
+    exact_match = False,
+    request_timeout = REQUEST_TIMEOUT,
 ) -> list[dict[str, Any]] | str:
     try:
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -47,7 +48,7 @@ def search(
         if ontologyId:
             params["ontology"] = ontologyId.lower()
         resp = requests.get(
-            f"{TS_BASE_URL}entities", params=params, timeout=REQUEST_TIMEOUT
+            f"{TS_BASE_URL}entities", params=params, timeout=request_timeout
         )
         resp = resp.json()
         resp = resp["elements"]
@@ -84,6 +85,9 @@ def batch_search(
     query: list[str],
     ontologyId: str = "",
     excludeCandidates: list[dict[str, str]] | None = None,
+    page: int = 0,
+    timeout_seconds: float | None = None,
+    strict: bool = False,
 ) -> dict[str, list[dict[str, Any]]] | str:
     if (
         not isinstance(query, list)
@@ -94,14 +98,18 @@ def batch_search(
         return "Error: query must be a list of 1 to 5 unique strings"
 
     with ThreadPoolExecutor(max_workers=len(query)) as executor:
-        results = executor.map(
+        results = list(executor.map(
             partial(
                 search,
                 ontologyId=ontologyId,
                 excludedCandidates=excludeCandidates,
+                page=page,
+                **({"request_timeout": (min(3.05, timeout_seconds / 2), min(10, timeout_seconds / 2))} if timeout_seconds is not None else {}),
             ),
             query,
-        )
+        ))
+    if strict and any(not isinstance(result, list) for result in results):
+        raise RuntimeError("Terminology lookup failed.")
     return {
         target: result if isinstance(result, list) else []
         for target, result in zip(query, results)

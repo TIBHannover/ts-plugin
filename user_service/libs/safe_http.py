@@ -35,7 +35,15 @@ def safe_get(
     return _request("GET", url, allowed_hosts, max_redirects, max_bytes)
 
 
-def _request(method, url, allowed_hosts, max_redirects, max_bytes):
+def safe_post(url: str, body: bytes, content_type="application/ld+json", headers=None) -> SafeResponse:
+    return _request("POST", url, None, 0, 64 * 1024, body, {**(headers or {}), "Content-Type": content_type})
+
+
+def validate_public_https_url(url: str) -> None:
+    _validate_url(url, None)
+
+
+def _request(method, url, allowed_hosts, max_redirects, max_bytes, body=None, request_headers=None):
     current_url = url
     for redirect_count in range(max_redirects + 1):
         parsed, hostname, address = _validate_url(current_url, allowed_hosts)
@@ -51,11 +59,13 @@ def _request(method, url, allowed_hosts, max_redirects, max_bytes):
             timeout=urllib3.Timeout(connect=3, read=10),
             maxsize=1,
         )
+        response = None
         try:
             response = pool.request(
                 method,
                 urlunsplit(("", "", parsed.path or "/", parsed.query, "")),
-                headers={"Host": host_header},
+                headers={**(request_headers or {}), "Host": host_header},
+                body=body,
                 redirect=False,
                 preload_content=False,
                 retries=False,
@@ -70,7 +80,7 @@ def _request(method, url, allowed_hosts, max_redirects, max_bytes):
 
             content = (
                 b""
-                if method == "HEAD"
+                if method in {"HEAD", "POST"}
                 else read_limited(
                     iter(lambda: response.read(64 * 1024, decode_content=True), b""),
                     max_bytes,
@@ -82,6 +92,8 @@ def _request(method, url, allowed_hosts, max_redirects, max_bytes):
         except Exception as exc:
             raise SafeRequestError("URL could not be fetched") from exc
         finally:
+            if response is not None:
+                response.close()
             pool.close()
 
     raise SafeRequestError("Too many redirects")

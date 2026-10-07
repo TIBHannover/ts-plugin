@@ -10,5 +10,8 @@ devnote
 .python_history
 logs
 reports/
+ai_assist/annotator_assist/sample_nmr_protocol.txt
+ai_assist/annotator_assist/evaluate_nmr_text.py
+ai_assist/annotator_assist/nmr_annotation.jsonld
 
 

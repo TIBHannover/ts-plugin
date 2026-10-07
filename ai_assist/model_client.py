@@ -17,12 +17,15 @@ def call_openrouter(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
     require_tool: bool = False,
+    timeout_seconds: float | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    response = client.chat.completions.create(
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds is not None else None
+    response = (client.with_options(max_retries=0) if deadline else client).chat.completions.create(
         model=model,
         messages=messages,
         stream=False,
         extra_body={"usage": {"include": True}},
+        **({"timeout": timeout_seconds} if timeout_seconds is not None else {}),
         **({"tools": tools} if tools else {}),
         **({"tool_choice": "required"} if tools and require_tool else {}),
     )
@@ -33,7 +36,7 @@ def call_openrouter(
     if usage.get("cost") is None or (
         usage.get("cost") == 0 and usage.get("total_tokens", 0) > 0
     ):
-        cost = get_generation_cost(response.id)
+        cost = get_generation_cost(response.id, deadline)
         if cost is not None:
             usage["cost"] = cost
     return _as_dict(response.choices[0].message), usage
@@ -47,16 +50,19 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
-def get_generation_cost(generation_id):
+def get_generation_cost(generation_id, deadline=None):
     try:
         for delay in (0, 0.5, 1):
+            if deadline is not None and time.monotonic() + delay >= deadline:
+                return None
             if delay:
                 time.sleep(delay)
+            remaining = deadline - time.monotonic() if deadline is not None else 10
             response = requests.get(
                 generation_url,
                 params={"id": generation_id},
                 headers={"Authorization": f"Bearer {os.environ['LLM_API_KEY']}"},
-                timeout=(3.05, 10),
+                timeout=(min(3.05, remaining / 2), min(10, remaining / 2)) if deadline is not None else (3.05, 10),
             )
             response.raise_for_status()
             data = response.json().get("data", {})
