@@ -130,7 +130,7 @@ def run_batch_search_turn(targets, run_id, timeout_seconds, allowed_ontologies):
         candidates = [term for term in results[value] if term.get("ontologyId", "").casefold() in allowed_ontologies][:5]
         if candidates:
             identifier = str(len(requests))
-            choices[identifier] = ((kind, value, context), {term["iri"] for term in candidates})
+            choices[identifier] = ((kind, value, context), {term["iri"]: term for term in candidates})
             requests.append({"id": identifier, "kind": kind, "text": value, "context": context, "candidates": candidates})
     if not requests:
         return {}, True, "model_selected", search_complete
@@ -153,7 +153,7 @@ def run_batch_search_turn(targets, run_id, timeout_seconds, allowed_ontologies):
                 continue
             exact = [term for term in request["candidates"] if isinstance(term.get("label"), str) and term["label"].strip().casefold() == text]
             if len(exact) == 1:
-                matches[choices[request["id"]][0]] = exact[0]["iri"]
+                matches[choices[request["id"]][0]] = exact[0]
         return matches, True, "exact_fallback", search_complete
     if run_id:
         record_model_output(run_id, message, usage)
@@ -169,7 +169,7 @@ def run_batch_search_turn(targets, run_id, timeout_seconds, allowed_ontologies):
             continue
         choice = choices.get(str(match.get("id")))
         if choice and match.get("iri") in choice[1]:
-            matches[choice[0]] = match["iri"]
+            matches[choice[0]] = choice[1][match["iri"]]
     return matches, True, "model_selected", search_complete
 
 

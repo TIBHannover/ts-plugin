@@ -17,12 +17,16 @@ NUMERIC_RE = re.compile(r"[\d.,+\-\s]+\Z")
 JSON_LD_CONTEXT = {
     "oa": "http://www.w3.org/ns/oa#",
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "schema": "https://schema.org/",
     "source": {"@id": "rdf:value", "@type": "@json"},
     "body": {"@id": "oa:hasBody", "@type": "@id"},
     "target": "oa:hasTarget",
     "hasSource": {"@id": "oa:hasSource", "@type": "@id"},
     "location": {"@id": "rdf:value", "@type": "@json"},
     "annotation_mode": "http://www.w3.org/2000/01/rdf-schema#comment",
+    "ontologyId": "schema:identifier",
+    "termLabel": "schema:name",
+    "termType": "schema:additionalType",
 }
 
 
@@ -147,14 +151,17 @@ def annotate_text(text, run_id=None):
     for field in fields:
         key_target = "key", field["label"], json.dumps(examples[field["label"]])
         for kind, target in (("field", key_target), ("value", _value_target(field))):
-            iri = matches.get(target) if target else None
-            if iri and len(graph) <= 2000:
+            term = matches.get(target) if target else None
+            if term and len(graph) <= 2000:
                 graph.append({
                     "@type": "oa:Annotation",
-                    "body": iri,
+                    "body": term["iri"],
+                    "ontologyId": term["ontologyId"],
+                    "termLabel": term["label"],
+                    "termType": term.get("type", "class"),
                     "target": {"hasSource": "_:dataset", "location": {"label": field["label"], "value": field["value"], "start": field["label_start"] if kind == "field" else field["value_start"], "end": field["label_end"] if kind == "field" else field["value_end"], "kind": kind}},
                 })
-            elif iri:
+            elif term:
                 output_limited = True
                 graph[0]["annotation_mode"] = f"Partial terminology annotation ({mode}); output limit reached."
     return {"@context": JSON_LD_CONTEXT, "@graph": graph}, complete and search_complete and not output_limited
