@@ -93,6 +93,7 @@ ALLOWED_HOSTS = [
     ".terminilogy.nfdi4chem.de",
     ".terminilogy.nfdi4ing.de",
     ".terminilogy.tib.eu",
+    ".ols03.develop.service.tib.eu",
 ]
 FORCE_SCRIPT_NAME = env("SUB_PATH", default="")
 AUTH_PROVIDERS = ["github", "orcid", "gitlab", "native", "apikey"]
