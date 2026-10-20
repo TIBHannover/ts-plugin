@@ -9,7 +9,7 @@ PORT="${PORT:-8000}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
 export DB_NAME="${DB_NAME:-ts_db}"
-export DB_USER="${DB_USER:-postgres}"
+export DB_USER="${DB_USER:-ts}"
 export DB_PASSWORD="${DB_PASSWORD:-1234}"
 export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
