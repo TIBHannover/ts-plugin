@@ -22,6 +22,8 @@ from github.models import GithubIssueRequestModel
 import urllib.parse
 import requests
 from django.http import JsonResponse
+from django.core.exceptions import BadRequest
+from user_service.libs.email import Email
 
 app_stats_gauge = Gauge(
     "ts_plugin_stats",
@@ -55,15 +57,53 @@ def is_entity_admin(request):
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
-def is_system_admin():
+def is_system_admin(request):
     client_ts = get_client_id_from_request()
-    user = UserModel.objects.filter(
-        username=get_username_from_request(), client_ts=client_ts
-    ).first()
-
-    role_model = RoleModel.objects.filter(user=user, client_ts=client_ts).first()
-    is_admin = True if role_model.target_object_type == "system" else False
+    is_admin = RoleModel.objects.filter(
+        user__username=get_username_from_request(),
+        user__client_ts=client_ts,
+        user__is_active=True,
+        user__is_blocked=False,
+        client_ts=client_ts,
+        target_object_id="system",
+        target_object_type="system",
+        role="admin",
+    ).exists()
     return create_json_response({"is_system_admin": is_admin})
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["POST"])
+def send_test_email(request):
+    client_ts = get_client_id_from_request()
+    role = RoleModel.objects.filter(
+        user__username=get_username_from_request(),
+        user__client_ts=client_ts,
+        user__is_active=True,
+        user__is_blocked=False,
+        client_ts=client_ts,
+        target_object_id="system",
+        target_object_type="system",
+        role="admin",
+    ).first()
+    if not role:
+        return JsonResponse({"_result": "System admin access required"}, status=403)
+    if not role.role_holder_email:
+        raise BadRequest("No email address configured for your system admin role")
+
+    logs = Email(
+        subject="TS Plugin test email",
+        body="This is a test email from the TS Plugin service.",
+        client_ts=client_ts,
+    ).send([role.role_holder_email], notification_type="test_email")
+    logs[0].refresh_from_db()
+    if logs[0].status == "failed":
+        return JsonResponse({"_result": "Could not queue test email"}, status=503)
+    return JsonResponse(
+        {"_result": {"email_log_id": logs[0].pk, "status": logs[0].status}},
+        status=202,
+    )
 
 
 @error_handler_decorator

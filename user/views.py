@@ -179,8 +179,13 @@ def login(request):
             return create_json_response({"issue": user})
 
         auth.user_id = user.id
-        role_model = RoleModel(user=user, client_ts=auth_object_dict["client_ts_id"])
-        auth_response_dict["system_admin"] = role_model.target_object_type == "system"
+        auth_response_dict["system_admin"] = RoleModel.objects.filter(
+            user=user,
+            client_ts=auth_object_dict["client_ts_id"],
+            target_object_id="system",
+            target_object_type="system",
+            role="admin",
+        ).exists()
         auth_response_dict["settings"] = user.user_extra
         auth_response_dict["id"] = user.id
         expires = _time.now(datetime.UTC) + datetime.timedelta(days=7)

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Give background services separate process groups for cleanup.
+set -m
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -23,10 +25,13 @@ pids=()
 
 cleanup() {
   for pid in "${pids[@]}"; do
-    kill "$pid" 2>/dev/null || true
+    kill -TERM -- "-$pid" 2>/dev/null || true
   done
+  wait "${pids[@]}" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -75,8 +80,9 @@ wait_for_postgres
 start_redis
 
 "$PYTHON" manage.py migrate
+"$PYTHON" manage.py collectstatic --noinput
 
-"$PYTHON" manage.py runserver "0.0.0.0:${PORT}" &
+"$PYTHON" manage.py runserver "0.0.0.0:${PORT}" --insecure &
 pids+=("$!")
 
 "$PYTHON" -m celery -A user_service worker --loglevel=warning --pool=solo --concurrency=1 &
