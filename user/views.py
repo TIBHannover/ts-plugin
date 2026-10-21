@@ -251,6 +251,12 @@ def send_term_request(request):
     if not state:
         raise BadRequest("Invalid device code")
 
+    if settings.DISABLE_TERM_REQUESTS:
+        cache.delete(f"github_device:{device_code}")
+        return create_json_response(
+            {"status": "success", "issue_url": "https://example.com/issues/1"}
+        )
+
     now = datetime.datetime.now()
     interval = state["interval"]
     if state["last_poll"] == 0:

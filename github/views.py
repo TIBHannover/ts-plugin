@@ -71,6 +71,9 @@ def submit_github_issue(request):
     if request_header.get("auth_provider") != "github":
         return create_json_response({"error": "Only github users can use this feature"})
 
+    if settings.DISABLE_TERM_REQUESTS:
+        return create_json_response({"new_issue_url": "https://example.com/issues/1"})
+
     _form = json.loads(request.body)
     frontend_id = get_client_id_from_request()
     issue_title = _form["title"]
