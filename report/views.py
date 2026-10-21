@@ -76,7 +76,7 @@ def create_report(request):
         body += "\n\n Please Check it as soon as possible."
 
         email = Email(subject=subject, body=body, client_ts=client_id)
-        email.report_content_to_admins()
+        email.report_content_to_admins(reference=f"report:{report_model.pk}")
     except Exception as e:
         print("Error while sending email for the created report: ", e)
 

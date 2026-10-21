@@ -15,6 +15,9 @@ export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
 export CELERY_BROKER_URL="${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT}/0}"
 export CELERY_RESULT_BACKEND="${CELERY_RESULT_BACKEND:-redis://localhost:${REDIS_PORT}/0}"
+export EMAIL_BACKEND="${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}"
+export EMAIL_HOST="${EMAIL_HOST:-127.0.0.1}"
+export EMAIL_PORT="${EMAIL_PORT:-25}"
 
 pids=()
 
@@ -63,6 +66,11 @@ start_redis() {
 }
 
 require_cmd "$PYTHON"
+
+if [[ $# -gt 0 ]]; then
+  exec "$PYTHON" manage.py "$@"
+fi
+
 wait_for_postgres
 start_redis
 
@@ -71,7 +79,7 @@ start_redis
 "$PYTHON" manage.py runserver "0.0.0.0:${PORT}" &
 pids+=("$!")
 
-"$PYTHON" -m celery -A user_service worker --loglevel=error --pool=solo --concurrency=1 &
+"$PYTHON" -m celery -A user_service worker --loglevel=warning --pool=solo --concurrency=1 &
 pids+=("$!")
 
 echo "Django is running at http://localhost:${PORT}"
