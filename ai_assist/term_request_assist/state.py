@@ -1,0 +1,161 @@
+from django.conf import settings
+
+from ai_assist.transport import (
+    RUN_REDIS_KEY_CANCEL,
+    RUN_REDIS_KEY_INPUT,
+    RUN_REDIS_KEY_READY,
+    RUN_REDIS_KEY_RESUMING,
+    RUN_REDIS_KEY_SOCKET_TOKEN,
+    RUN_REDIS_KEY_STATE,
+)
+
+CATEGORIES = {
+    "Material Object": ["physical object", "device", "artifact", "substance", "physical thing"],
+    "Process": ["activity", "event", "action", "occurrence", "procedure"],
+    "Agent": ["person", "organization", "software agent", "actor"],
+    "Attribute": ["property", "characteristic", "quality", "feature", "parameter", "trait"],
+    "Disposition": ["function", "capability", "tendency", "potential", "capacity", "role"],
+    "Location": ["place", "site", "region", "position", "spatial area"],
+    "Time Interval": ["period", "duration", "moment", "date", "schedule", "start", "end"],
+    "Information Content": [
+        "data",
+        "data set",
+        "document",
+        "report",
+        "message",
+        "description",
+        "specification",
+    ],
+}
+
+RUN_REDIS_KEY_AWAITING_INPUT = "awaiting_input"
+RUN_REDIS_KEY_AWAITING_REJECTION = "awaiting_rejection"
+RUN_REDIS_KEY_AWAITING_REJECTION_REASON = "awaiting_rejection_reason"
+RUN_REDIS_KEY_TERM_REQUEST_AGENT_REJECTIONS = "rejections"
+RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS = "search_rejections"
+AWAITING_REJECTION_TERM_REQUEST_SEARCH = "term_request_search"
+
+TERM_REQUEST_AGENT_MAX_INITIAL_SEARCH_CALLS = 3
+CLIENT_MESSAGE_TYPE_REJECT = "reject"
+CLIENT_MESSAGE_TYPE_USER_MESSAGE = "user_message"
+CLIENT_MESSAGE_TYPE_SELECT_ONTOLOGY = "select_ontology"
+SERVER_MESSAGE_TYPE_QUESTION = "question"
+SERVER_MESSAGE_TYPE_PROGRESS = "progress"
+SERVER_MESSAGE_TYPE_DONE = "done"
+SERVER_MESSAGE_TYPE_CANCELLED = "cancelled"
+SERVER_MESSAGE_TYPE_AGENT_STARTED = "agent_started"
+SERVER_MESSAGE_TYPE_ONTOLOGY_SELECTION = "ontology_selection"
+RESUME_TERM_REQUEST_SEARCH_AGENT_TASK_NAME = "ai_assist.tasks.resume_agent_task"
+
+RUN_REDIS_KEYS = (
+    RUN_REDIS_KEY_CANCEL,
+    RUN_REDIS_KEY_INPUT,
+    RUN_REDIS_KEY_READY,
+    RUN_REDIS_KEY_STATE,
+    RUN_REDIS_KEY_AWAITING_INPUT,
+    RUN_REDIS_KEY_AWAITING_REJECTION,
+    RUN_REDIS_KEY_AWAITING_REJECTION_REASON,
+    RUN_REDIS_KEY_TERM_REQUEST_AGENT_REJECTIONS,
+    RUN_REDIS_KEY_SEARCH_AGENT_REJECTIONS,
+    RUN_REDIS_KEY_RESUMING,
+    RUN_REDIS_KEY_SOCKET_TOKEN,
+)
+
+
+def new_response(phase="term_request"):
+    return {
+        "candidates": [],
+        "error": None,
+        "is_final": False,
+        "usage_stats": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "search_call_count": 0,
+        "ontologies_list_call_count": 0,
+        "available_ontology_ids": [],
+        "available_ontologies": [],
+        "ontology_options": [],
+        "selected_ontology_ids": [],
+        "needs_ontology_selection": False,
+        "rejected_ontology_ids": [],
+        "allow_ontology_reselection": False,
+        "pending_ontology_rejection_decision": False,
+        "known_terms": [],
+        "candidate_parent_nodes": [],
+        "candidate_parent_limit": settings.TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES,
+        "child_lookup_errors": [],
+        "unavailable_nodes": [],
+        "rejected_parent_nodes": [],
+        "visited_root_pages": [],
+        "root_search_complete": {"class": False, "property": False},
+        "visited_nodes": [],
+        "successful_search_count": 0,
+        "progress_feedback": "",
+        "progress_feedbacks": [],
+        "progress_emitted_live": False,
+        "needs_user_input": False,
+        "question": "",
+        "phase": phase,
+        "search_results": [],
+        "excluded_search_candidates": [],
+        "clarification_count": 0,
+        "project_domain_provided": False,
+        "suppressed_domain_question_count": 0,
+        "invalid_question_reason_count": 0,
+        "invalid_final_response_count": 0,
+        "ontology_selection_failure_count": 0,
+        "force_tool_call": False,
+        "term_category": "",
+    }
+
+
+def normalize_state(state):
+    """Add fields missing from runs persisted before workflow support."""
+    response = state.setdefault("response", {})
+    if "phase" not in response:
+        state.setdefault("workflow", "term_request")
+        state.setdefault(
+            "input_text",
+            next(
+                (
+                    message.get("content", "")
+                    for message in state.get("messages", [])
+                    if message.get("role") == "user"
+                ),
+                "",
+            ),
+        )
+    restart_traversal = (
+        state.get("workflow") == "term_request"
+        and response.get("phase", "term_request") == "term_request"
+        and "candidate_parent_nodes" not in response
+    )
+    for key, value in new_response().items():
+        response.setdefault(key, value)
+    if restart_traversal:
+        response["known_terms"] = []
+        response["visited_root_pages"] = []
+        response["root_search_complete"] = {"class": False, "property": False}
+        response["visited_nodes"] = []
+        state["restart_term_request_conversation"] = True
+    if not isinstance(response["root_search_complete"], dict):
+        complete = bool(response["root_search_complete"])
+        response["root_search_complete"] = {
+            "class": complete,
+            "property": complete,
+        }
+    for term_type in ("class", "property"):
+        response["root_search_complete"].setdefault(term_type, False)
+    if not response["term_category"]:
+        response["term_category"] = get_term_category(state.get("input_text", ""))
+    state.setdefault("steps", 0)
+    return state
+
+
+def get_term_category(input_text):
+    return next(
+        (
+            line.partition(":")[2].strip()
+            for line in input_text.splitlines()
+            if line.startswith("Term category:")
+        ),
+        "",
+    )

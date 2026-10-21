@@ -45,7 +45,11 @@ urlpatterns = [
     ),
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     path("pub_link/", include("pub_link.urls")),
+    path("ai_assist/", include("ai_assist.urls")),
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(
+        settings.STATIC_URL.removeprefix(settings.FORCE_SCRIPT_NAME or ""),
+        document_root=settings.STATIC_ROOT,
+    )

@@ -1,5 +1,6 @@
 from pathlib import Path
 import environ
+from celery.schedules import crontab
 
 # import logging
 import os
@@ -83,6 +84,7 @@ LOGGING = {
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
+    "172.18.32.1", # for windows wsl
     "localhost",
     ".service.tib.eu",
     ".terminology.nfdi4chem.de",
@@ -106,9 +108,11 @@ CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_SECURE = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:6006",
     "http://localhost:8080",
     "http://localhost",
     "http://127.0.0.1:3000",
+    "http://172.18.32.1:3000", # for windows wsl
     "https://ols02.develop.service.tib.eu",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
@@ -120,6 +124,7 @@ CORS_ALLOWED_ORIGINS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://service.tib.eu",
     "http://localhost:3000",
+    "http://172.18.32.1:3000", # for windows wsl
     "http://localhost",
     "https://terminology.nfdi4chem.de",
     "https://terminology.nfdi4ing.de",
@@ -154,6 +159,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
     "drf_yasg",
     "corsheaders",
     "user",
@@ -169,6 +175,7 @@ INSTALLED_APPS = [
     "pub_link",
     "ts",
     "django_celery_beat",
+    "ai_assist",
 ]
 AUTH_PROVIDERS_WITH_PKCE = ["github", "gitlab", "orcid"]
 
@@ -185,6 +192,16 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "user_service.middlewares.cache.DisableCacheMiddleware",
 ]
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
 
 ROOT_URLCONF = "user_service.urls"
 
@@ -205,6 +222,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "user_service.wsgi.application"
+ASGI_APPLICATION = "user_service.asgi.application"
 
 
 DATABASES = {
@@ -250,9 +268,36 @@ STATIC_URL = env("SUB_PATH", default="") + "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://redis:6379/0")
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/0")
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/2")
+AI_ASSIST_ENABLED = env.bool("AI_ASSIST_ENABLED", default=False)
+TERM_REQUEST_AI_ASSIST_MAX_LOOPS = env.int("TERM_REQUEST_AI_ASSIST_MAX_LOOPS", default=100)
+TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS = env.int("TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS", default=1)
+TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES = env.int(
+    "TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES", default=3
+)
+SEARCH_AI_ASSIST_MAX_LOOPS = env.int("SEARCH_AI_ASSIST_MAX_LOOPS", default=20)
+TERM_REQUEST_INPUT_MAX_LENGTH = env.int("TERM_REQUEST_INPUT_MAX_LENGTH", default=4000)
+if TERM_REQUEST_AI_ASSIST_MAX_LOOPS < 1:
+    TERM_REQUEST_AI_ASSIST_MAX_LOOPS = 100
+if TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS < 0:
+    TERM_REQUEST_AI_ASSIST_MAX_REJECTIONS = 1
+if TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES < 1:
+    TERM_REQUEST_AI_ASSIST_MAX_PARENT_CANDIDATES = 3
+if SEARCH_AI_ASSIST_MAX_LOOPS < 1:
+    SEARCH_AI_ASSIST_MAX_LOOPS = 20
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [REDIS_URL]},
+    }
+}
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
 CELERY_BEAT_SCHEDULE = {
+    "harvest-ontologies-daily": {
+        "task": "ai_assist.tasks.harvest_ontologies_task",
+        "schedule": crontab(hour=0, minute=0),
+    },
     "cleanup-expired-oauth-login-transactions": {
         "task": "user.tasks.cleanup_expired_oauth_login_transactions",
         "schedule": 300,
@@ -263,38 +308,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOG_DIR = Path("./logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-# LOGGING = {
-#     "version": 1,
-#     "disable_existing_loggers": False,
-#     "handlers": {
-#         "file": {
-#             "class": "logging.FileHandler",
-#             "filename": LOG_DIR / "ts-plugin.log",
-#         },
-#     },
-#     "root": {
-#         "handlers": ["file"],
-#         "level": "ERROR",
-#     },
-#     "loggers": {
-#         "django": {
-#             "handlers": ["file"],
-#             "level": "INFO",
-#             "propagate": False,
-#         },
-#         "django.request": {
-#             "handlers": ["file"],
-#             "level": "INFO",
-#             "propagate": False,
-#         },
-#         "django.server": {
-#             "handlers": ["file"],
-#             "level": "INFO",
-#             "propagate": False,
-#         },
-#     },
-# }
-
 
 SUB_PATH = env("SUB_PATH", default="")
 GITHUB_TS_USER_API_TOKEN = env("GITHUB_TS_USER_API_TOKEN", default=None)
@@ -354,3 +367,5 @@ BIOREGISTRY_ENDPOINT = env("BIOREGISTRY_ENDPOINT", default=None)
 NFDI4CHEM_SEARCH_SERVICE_ENDPOINT = env(
     "NFDI4CHEM_SEARCH_SERVICE_ENDPOINT", default=None
 )
+LLM_API_KEY = env("LLM_API_KEY", default=None)
+LLM_MODEL = env("LLM_MODEL", default=None)
