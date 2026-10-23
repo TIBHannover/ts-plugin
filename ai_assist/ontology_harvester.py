@@ -1,6 +1,7 @@
 import logging
 
 import requests
+from django.db import transaction
 from django.utils import timezone
 
 from ai_assist.models import Ontology
@@ -11,12 +12,24 @@ logger = logging.getLogger(__name__)
 
 
 def harvest_ontologies():
-    response = requests.get(ONTOLOGIES_URL, timeout=30)
-    response.raise_for_status()
-    ontologies = response.json().get("elements", [])
+    ontologies = []
+    page = 0
+    while True:
+        response = requests.get(ONTOLOGIES_URL, params={"page": page}, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data.get("elements"), list) or not data["elements"]:
+            raise ValueError("Ontology harvest returned an empty or invalid page.")
+        ontologies.extend(data["elements"])
+        page += 1
+        if page >= data["totalPages"]:
+            break
+    records = []
     for onto in ontologies:
         try:
             ontology_id = onto["ontologyId"]
+            if not isinstance(ontology_id, str) or not ontology_id.strip():
+                raise ValueError("Invalid ontology ID")
             defaults = {
                 "label": onto.get("title", ""),
                 "repo_url": onto.get("repo_url", ""),
@@ -29,9 +42,13 @@ def harvest_ontologies():
                 "loaded": timezone.now(),
             }
         except (KeyError, TypeError, ValueError) as exc:
-            logger.warning("Skipping invalid ontology: %s", exc)
-            continue
-        Ontology.objects.update_or_create(ontologyId=ontology_id, defaults=defaults)
+            logger.error("Aborting ontology harvest: %s", exc)
+            raise
+        records.append(Ontology(ontologyId=ontology_id, **defaults))
+    with transaction.atomic():
+        Ontology.objects.all().delete()
+        Ontology.objects.bulk_create(records)
+    return len(records)
 
 
 
