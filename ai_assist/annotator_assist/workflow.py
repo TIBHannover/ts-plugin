@@ -3,15 +3,11 @@ import itertools
 import logging
 import re
 import time
-from functools import lru_cache
-
-import requests
 from openai import APIConnectionError, APITimeoutError
 
-from ai_assist.functions import TS_BASE_URL
+from ai_assist.functions import allowed_ontology_ids
 
 logger = logging.getLogger(__name__)
-COLLECTION = "NFDI4CHEM"
 FIELD_RE = re.compile(r"(?<!\w)([A-Z](?:[a-z0-9]*|[A-Z0-9]*)(?: (?:[A-Z](?:[a-z0-9]*|[A-Z0-9]*)|of|and)){0,4}):")
 NUMERIC_RE = re.compile(r"[\d.,+\-\s]+\Z")
 JSON_LD_CONTEXT = {
@@ -30,15 +26,8 @@ JSON_LD_CONTEXT = {
 }
 
 
-@lru_cache(maxsize=1)
 def collection_ontologies():
-    response = requests.get(f"{TS_BASE_URL}ontologies", params={"page": 0, "size": 1000}, timeout=(3.05, 10))
-    response.raise_for_status()
-    ontology_ids = {
-        ontology["ontologyId"].casefold()
-        for ontology in response.json().get("elements", [])
-        if any(COLLECTION in classification.get("collection", []) for classification in ontology.get("classifications", []))
-    }
+    ontology_ids = allowed_ontology_ids()
     if not ontology_ids:
         raise RuntimeError("NFDI4CHEM ontology collection is unavailable.")
     return ontology_ids

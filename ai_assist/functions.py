@@ -15,6 +15,29 @@ TS_BASE_URL_V1 = "https://api.terminology.tib.eu/api/"
 DEFNITION_MAX_LENGTH = 300
 REQUEST_TIMEOUT = (3.05, 10)
 CHILD_SEARCH_PAGE_SIZE = 1000
+ALLOWED_COLLECTION = "NFDI4CHEM"
+
+
+def allowed_ontologies():
+    return Ontology.objects.filter(collection__contains=[ALLOWED_COLLECTION])
+
+
+def allowed_ontology_ids():
+    return {
+        ontology_id.casefold()
+        for ontology_id in allowed_ontologies().values_list("ontologyId", flat=True)
+    }
+
+
+def _allowed_terms(terms, ontology_id="", ontology_key="ontologyId"):
+    allowed = allowed_ontology_ids()
+    if ontology_id:
+        allowed &= {ontology_id.casefold()}
+    return [
+        term for term in terms
+        if isinstance(term.get(ontology_key), str)
+        and term[ontology_key].casefold() in allowed
+    ]
 
 
 def search(
@@ -26,6 +49,8 @@ def search(
     validate_ontology = True,
     exact_match = False,
     request_timeout = REQUEST_TIMEOUT,
+    collection_id: str = ALLOWED_COLLECTION,
+    subject_id: str = "",
 ) -> list[dict[str, Any]] | str:
     try:
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -41,7 +66,12 @@ def search(
             "facetFields": "type ontologyId",
             "exactMatch": exact_match
         }
-        if ontologyId and validate_ontology:
+        params.update(
+            schema="collection",
+            classification=collection_id or ALLOWED_COLLECTION,
+            option="COMPOSITE",
+        )
+        if ontologyId:
             onto_details = get_ontology_detail(ontologyId)
             if "Error" in onto_details:
                 raise Exception("Ontology not found")
@@ -57,7 +87,7 @@ def search(
             (candidate["ontologyId"].casefold(), candidate["iri"])
             for candidate in excludedCandidates or []
         }
-        for r in resp:
+        for r in _allowed_terms(resp, ontologyId):
             if (r["ontologyId"].casefold(), r["iri"]) in excluded:
                 continue
             definition = convert_to_str(r.get("definition", ""))
@@ -127,7 +157,9 @@ def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
             params={
                 "q": query,
                 "exclusive": "false",
-                "option": "LINEAR",
+                "schema": "collection",
+                "classification": ALLOWED_COLLECTION,
+                "option": "COMPOSITE",
                 "exact": "false",
                 "obsoletes": "false",
                 "local": "false",
@@ -143,7 +175,7 @@ def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
         if not resp:
             return f"Error: no results found for {iri}"
         res = []
-        for r in resp:
+        for r in _allowed_terms(resp, ontology_key="ontology_name"):
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
@@ -167,12 +199,16 @@ def search_under_term(query: str, iri: str, page: int = 0, size: int = 20):
 def get_term_detail(iri: str, ontologyId: str):
     original_iri = iri
     try:
+        if not isinstance(get_ontology_detail(ontologyId), dict):
+            return f"Error: no allowed ontology found for {ontologyId}"
         iri = urllib.parse.quote(iri, safe="")
         resp = requests.get(
             f"{TS_BASE_URL}ontologies/{ontologyId}/entities/{urllib.parse.quote(iri, safe='')}?lang=en",
             timeout=REQUEST_TIMEOUT,
         )
         resp = resp.json()
+        if not _allowed_terms([resp], ontologyId):
+            return f"Error: term does not belong to allowed ontology {ontologyId}"
         definition = convert_to_str(resp.get("definition", ""))
         return {
             "label": convert_to_str(resp["label"]),
@@ -190,6 +226,8 @@ def get_term_detail(iri: str, ontologyId: str):
 
 def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
     try:
+        if not isinstance(get_ontology_detail(ontologyId), dict):
+            return f"Error: no allowed ontology found for {ontologyId}"
         if term_type != "class" and term_type != "property":
             return "Errro: type of a term has to be either class or property."
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -204,7 +242,7 @@ def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
         resp = requests.get(base_url, timeout=REQUEST_TIMEOUT,)
         resp = resp.json()
         res = []
-        for r in resp["elements"]:
+        for r in _allowed_terms(resp["elements"], ontologyId):
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
@@ -227,6 +265,8 @@ def get_term_children(iri: str, ontologyId: str, term_type: str, page: int = 0):
 
 def search_in_children(iri: str, ontologyId: str, term_type: str):
     try:
+        if not isinstance(get_ontology_detail(ontologyId), dict):
+            return f"Error: no allowed ontology found for {ontologyId}"
         if term_type not in ("class", "property"):
             return "Error: type of a term has to be either class or property."
 
@@ -284,7 +324,7 @@ def search_in_children(iri: str, ontologyId: str, term_type: str):
                 "synonym": child.get("synonym", []),
                 "type": get_term_type(child),
             }
-            for child in children
+            for child in _allowed_terms(children, ontologyId)
         ]
     except Exception:
         logger.exception("Unable to load children for %s in %s", iri, ontologyId)
@@ -293,6 +333,8 @@ def search_in_children(iri: str, ontologyId: str, term_type: str):
 
 def get_roots(ontologyId: str, type: str, page: int = 0):
     try:
+        if not isinstance(get_ontology_detail(ontologyId), dict):
+            return f"Error: no allowed ontology found for {ontologyId}"
         if type != "class" and type != "property":
             return "Error: type has to be either class or property."
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
@@ -312,7 +354,7 @@ def get_roots(ontologyId: str, type: str, page: int = 0):
         )
         resp = resp.json()
         res = []
-        for r in resp["elements"]:
+        for r in _allowed_terms(resp["elements"], ontologyId):
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
@@ -335,6 +377,8 @@ def get_roots(ontologyId: str, type: str, page: int = 0):
 
 def get_individuals(ontologyId: str, page: int = 0):
     try:
+        if not isinstance(get_ontology_detail(ontologyId), dict):
+            return f"Error: no allowed ontology found for {ontologyId}"
         if isinstance(page, bool) or not isinstance(page, int) or page < 0:
             return "Error: page must be a non-negative integer"
 
@@ -350,7 +394,7 @@ def get_individuals(ontologyId: str, page: int = 0):
         )
         resp = resp.json()
         res = []
-        for r in resp["elements"]:
+        for r in _allowed_terms(resp["elements"], ontologyId):
             definition = convert_to_str(r.get("definition", ""))
             res.append(
                 {
@@ -373,7 +417,7 @@ def get_individuals(ontologyId: str, page: int = 0):
 
 def get_ontology_detail(ontologyId: str):
     try:
-        onto = Ontology.objects.filter(ontologyId=ontologyId).first()
+        onto = allowed_ontologies().filter(ontologyId__iexact=ontologyId).first()
         if not onto:
            return f"Error: no ontology found for {ontologyId}"
         return onto.to_dict()
@@ -384,7 +428,7 @@ def get_ontology_detail(ontologyId: str):
 def ontologies_list(
     collection: str = "", subject: str = "", hosted_on_github: bool = True
 ):
-    ontologies = Ontology.objects.all()
+    ontologies = allowed_ontologies()
     if hosted_on_github:
         ontologies = ontologies.filter(
             repo_url__iregex=r"^https?://(?:www\.)?github\.com(?:/|$)"

@@ -21,12 +21,27 @@ services:
     networks:
       - microservice
 
+  deployment:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: sh scripts/deploy.sh
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - microservice
+
   ts-plugin:
     container_name: ts-plugin
     build:
       context: .
       dockerfile: docker/Dockerfile
     depends_on:
+      deployment:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     networks:
@@ -55,6 +70,8 @@ services:
       dockerfile: docker/Dockerfile
     command: celery -A user_service worker --loglevel=error --concurrency=20
     depends_on:
+      deployment:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
@@ -71,6 +88,8 @@ services:
       dockerfile: docker/Dockerfile
     command: celery -A user_service beat --loglevel=error
     depends_on:
+      deployment:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
