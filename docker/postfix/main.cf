@@ -1,0 +1,15 @@
+compatibility_level = 3.6
+mydestination = localhost
+relayhost =
+inet_interfaces = all
+inet_protocols = ipv4
+mynetworks = 127.0.0.0/8, 172.30.25.2/32, 172.30.25.3/32
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
+smtpd_recipient_restrictions = permit_mynetworks, reject
+smtp_tls_security_level = may
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+maillog_file = /dev/stdout
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
+biff = no
+append_dot_mydomain = no

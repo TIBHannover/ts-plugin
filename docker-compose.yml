@@ -44,8 +44,16 @@ services:
         condition: service_completed_successfully
       db:
         condition: service_healthy
+      postfix:
+        condition: service_healthy
     networks:
-      - microservice
+      microservice:
+      mail:
+        ipv4_address: 172.30.25.2
+    environment:
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: postfix
+      EMAIL_PORT: 25
     links:
       - db
     volumes:
@@ -76,10 +84,35 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      postfix:
+        condition: service_healthy
     volumes:
       - service_logs:/home/ts-app/logs
     networks:
-      - microservice
+      microservice:
+      mail:
+        ipv4_address: 172.30.25.3
+    environment:
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: postfix
+      EMAIL_PORT: 25
+
+  postfix:
+    build:
+      context: docker/postfix
+    restart: always
+    environment:
+      POSTFIX_HOSTNAME: ${POSTFIX_HOSTNAME:?Set POSTFIX_HOSTNAME to the production mail hostname}
+    volumes:
+      - postfix_queue:/var/spool/postfix
+    networks:
+      mail:
+        ipv4_address: 172.30.25.4
+    healthcheck:
+      test: ["CMD", "postfix", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   celery_beat:
     container_name: celery_beat
@@ -118,6 +151,11 @@ services:
 networks:
   microservice:
   logger:
+  mail:
+    ipam:
+      config:
+        - subnet: 172.30.25.0/29
 
 volumes:
   service_logs:
+  postfix_queue:

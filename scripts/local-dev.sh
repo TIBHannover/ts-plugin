@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Give background services separate process groups for cleanup.
+set -m
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -16,15 +18,21 @@ export DB_PORT="${DB_PORT:-5432}"
 export DEBUG_MODE="${DEBUG_MODE:-True}"
 export CELERY_BROKER_URL="${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT}/0}"
 export CELERY_RESULT_BACKEND="${CELERY_RESULT_BACKEND:-redis://localhost:${REDIS_PORT}/0}"
+export EMAIL_BACKEND="${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}"
+export EMAIL_HOST="${EMAIL_HOST:-127.0.0.1}"
+export EMAIL_PORT="${EMAIL_PORT:-25}"
 
 pids=()
 
 cleanup() {
   for pid in "${pids[@]}"; do
-    kill "$pid" 2>/dev/null || true
+    kill -TERM -- "-$pid" 2>/dev/null || true
   done
+  wait "${pids[@]}" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -73,17 +81,23 @@ start_redis() {
 }
 
 require_cmd "$PYTHON"
+
+if [[ $# -gt 0 ]]; then
+  exec "$PYTHON" manage.py "$@"
+fi
+
 wait_for_postgres
 start_redis
 
 "$PYTHON" manage.py migrate
+"$PYTHON" manage.py collectstatic --noinput
 
 "$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" &
 pids+=("$!")
 
 # "$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &
 # pids+=("$!")
-"$PYTHON" -m celery -A user_service worker --loglevel=error --pool=solo &
+"$PYTHON" -m celery -A user_service worker --loglevel=warning --pool=solo --concurrency=1 &
 pids+=("$!")
 
 echo "Django is running at http://localhost:${PORT}"

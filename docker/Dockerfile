@@ -6,16 +6,11 @@ RUN apt-get -q -y update \
     && apt-get install -y curl \
     && apt-get install -y vim \
     && apt-get install -y postgresql-client \
-    && DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y postfix && \
-    apt-get update && apt-get install -y sudo  && \
-    apt-get install -y telnet
+    && apt-get install -y telnet
 
 
 ENV USERNAME=ts-app
 ENV WORKING_DIR=/home/ts-app
-ENV POSTFIX_START_CMD="/usr/sbin/service postfix start"
-ENV POSTFIX_COPY_RESOLV_CMD="/bin/cp /etc/resolv.conf /var/spool/postfix/etc/resolv.conf"
 
 
 WORKDIR ${WORKING_DIR}
@@ -33,13 +28,6 @@ RUN groupadd ${USERNAME} && \
 
 RUN chown -R ${USERNAME}:www-data ${WORKING_DIR} \
     && chmod -R u=rwx,g=rwx ${WORKING_DIR}
-
-
-RUN echo ${USERNAME}' ALL=(ALL) NOPASSWD: '${POSTFIX_START_CMD} >> /etc/sudoers.d/${USERNAME} && \
-    chmod 0440 /etc/sudoers.d/${USERNAME}
-
-RUN echo ${USERNAME}' ALL=(ALL) NOPASSWD: '${POSTFIX_COPY_RESOLV_CMD} >> /etc/sudoers.d/${USERNAME} && \
-    chmod 0440 /etc/sudoers.d/${USERNAME}
 
 
 USER ${USERNAME}

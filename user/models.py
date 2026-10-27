@@ -10,6 +10,31 @@ from django.contrib.auth.hashers import make_password
 ALLOWED_ROLES = ["admin"]
 MAX_API_KEY_OWNER_DEPTH = 10
 
+
+class EmailLog(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SUBMITTED = "submitted", "Accepted by SMTP server"
+        CAPTURED = "captured", "Captured by development backend"
+        FAILED = "failed", "Failed"
+
+    notification_type = models.CharField(max_length=100, default="general")
+    reference = models.CharField(max_length=255, blank=True)
+    client_ts = models.CharField(max_length=100, blank=True)
+    recipient = models.EmailField()
+    sender = models.EmailField()
+    subject = models.TextField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "email_logs"
+        ordering = ["-created_at"]
+
+
 # TODO: delete user mechanism
 
 
@@ -243,11 +268,12 @@ class RoleModel(models.Model):
 
     def get_system_admin_emails(self) -> list:
         admins = RoleModel.objects.filter(
-            client_ts=self.client_ts, target_object_type="system"
+            client_ts=self.client_ts, target_object_type="system", role="admin"
         )
         emails = []
         for admin in admins:
-            emails.append(admin.role_holder_email)
+            if admin.role_holder_email:
+                emails.append(admin.role_holder_email)
         return emails
 
     def role_is_valid(self) -> bool:

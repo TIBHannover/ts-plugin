@@ -1,36 +1,51 @@
-import smtplib
-from email.mime.text import MIMEText
-from user.models import RoleModel
-from django.conf import settings
+import logging
 
+from django.conf import settings
+from django.db import transaction
+
+from user.models import EmailLog, RoleModel
+from user.tasks import send_notification_email
+
+
+logger = logging.getLogger(__name__)
 
 
 class Email:
-
-    def __init__(self, subject, body, client_ts):
+    def __init__(self, subject, body, client_ts=""):
         self.subject = subject
         self.body = body
-        self.sender_email = settings.SYSTEM_EMAIL
+        self.sender_email = settings.DEFAULT_FROM_EMAIL
         self.client_ts = client_ts
-    
 
+    def send(self, recipients, notification_type="general", reference=""):
+        logs = []
+        for recipient in dict.fromkeys(recipients):
+            email_log = EmailLog.objects.create(
+                notification_type=notification_type,
+                reference=reference,
+                client_ts=self.client_ts,
+                recipient=recipient,
+                sender=self.sender_email,
+                subject=self.subject,
+            )
+            logs.append(email_log)
 
-    def report_content_to_admins(self): 
-        role_model = RoleModel(client_ts=self.client_ts)       
-        recipient_email = role_model.get_system_admin_emails()             
-        if len(recipient_email) == 0:
-            # No system admin. 
-            return True
-        
-        message = MIMEText(self.body)
-        message['Subject'] = self.subject
-        message['From'] = self.sender_email
-        message['To'] = ", ".join(recipient_email)
+            def enqueue(email_log_id=email_log.pk):
+                try:
+                    send_notification_email.delay(email_log_id, self.body)
+                except Exception as exc:
+                    EmailLog.objects.filter(pk=email_log_id).update(
+                        status=EmailLog.Status.FAILED, last_error=str(exc)
+                    )
+                    logger.exception("Could not queue notification %s", email_log_id)
 
-        try:            
-            smtp_server = smtplib.SMTP(settings.EMAIL_SERVER_HOST, int(settings.EMAIL_SERVER_PORT))
-            smtp_server.sendmail(self.sender_email, recipient_email, message.as_string())
-            smtp_server.quit()
-            return True
-        except Exception as e:
-            return False
+            transaction.on_commit(enqueue)
+        return logs
+
+    def report_content_to_admins(self, reference=""):
+        self.send(
+            RoleModel(client_ts=self.client_ts).get_system_admin_emails(),
+            notification_type="content_report",
+            reference=reference,
+        )
+        return True
