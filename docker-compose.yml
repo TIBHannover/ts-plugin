@@ -34,27 +34,19 @@ services:
     networks:
       - microservice
 
-  staticfiles_init:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    user: root
-    command: ["chown", "-R", "ts-app:www-data", "/home/ts-app/staticfiles"]
-    volumes:
-      - staticfiles:/home/ts-app/staticfiles
-
   ts-plugin:
     container_name: ts-plugin
     build:
       context: .
       dockerfile: docker/Dockerfile
+    user: root
+    entrypoint: ["python", "-I", "/usr/local/bin/app-entrypoint.py"]
+    command: ["sh", "-c", "python manage.py collectstatic --noinput && exec uvicorn user_service.asgi:application --host 0.0.0.0 --port 8000 --workers 3"]
     depends_on:
       deployment:
         condition: service_completed_successfully
       db:
         condition: service_healthy
-      staticfiles_init:
-        condition: service_completed_successfully
     networks:
       - microservice
     environment:

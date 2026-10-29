@@ -29,6 +29,8 @@ RUN groupadd ${USERNAME} && \
 RUN chown -R ${USERNAME}:www-data ${WORKING_DIR} \
     && chmod -R u=rwx,g=rwx ${WORKING_DIR}
 
+COPY --chown=root:root --chmod=0644 scripts/app-entrypoint.py /usr/local/bin/app-entrypoint.py
+
 
 USER ${USERNAME}
 ENV PATH "$PATH:/home/${USERNAME}/.local/bin"
