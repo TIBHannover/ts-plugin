@@ -29,7 +29,9 @@ RUN groupadd ${USERNAME} && \
 RUN chown -R ${USERNAME}:www-data ${WORKING_DIR} \
     && chmod -R u=rwx,g=rwx ${WORKING_DIR}
 
-COPY --chown=root:root --chmod=0644 scripts/app-entrypoint.py /usr/local/bin/app-entrypoint.py
+COPY scripts/app-entrypoint.py /usr/local/bin/app-entrypoint.py
+RUN chown root:root /usr/local/bin/app-entrypoint.py \
+    && chmod 0644 /usr/local/bin/app-entrypoint.py
 
 
 USER ${USERNAME}
