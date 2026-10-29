@@ -1,5 +1,6 @@
 # encoding: utf-8
 
+from user.libs.auth_debug import debug_auth
 from user.libs.github import GithubLib
 from user.libs.gitlab import GitLabLib
 from user.libs.orcid import OrcidLib
@@ -42,6 +43,7 @@ class Auth:
             self.user_id = user_id
 
     def authenticate(self) -> Union[dict, bool]:
+        debug_auth("Dispatching authentication to configured provider")
         match self.auth_provider:
             case "github":
                 return GithubLib.authenticate(
@@ -60,9 +62,11 @@ class Auth:
                     code=self.code, client_ts_id=self.client_ts_id, code_verifier=self.code_verifier
                 )
             case _:
+                debug_auth("Provider dispatch rejected; unsupported provider")
                 return False
 
     def login_is_valid(self) -> bool:
+        debug_auth("Checking login with configured provider")
         match self.auth_provider:
             case "github":
                 return GithubLib.login_valid(user_auth_token=self.access_token)
@@ -75,6 +79,7 @@ class Auth:
             case "gitlab":
                 return GitLabLib.login_valid(user_auth_token=self.access_token)
             case _:
+                debug_auth("Provider dispatch rejected; unsupported provider")
                 return False
 
     def abort_if_not_authenticated(self) -> None:
@@ -85,7 +90,9 @@ class Auth:
         self.abort_if_user_is_blocked()
         login_validity = self.login_is_valid()
         if not login_validity:
+            debug_auth("Authentication rejected; provider login is invalid")
             raise PermissionDenied("Not Authorized")
+        debug_auth("Authentication checks passed")
 
     def user_is_guest(self) -> Optional[bool]:
         try:
@@ -98,12 +105,15 @@ class Auth:
                 raise PermissionDenied("Not Authorized")
             return False
         except:
+            debug_auth("Guest fallback; authentication check failed")
             return True
 
     def abort_if_client_app_not_valid(self) -> Optional[bool]:
+        debug_auth("Validating client application")
         if not self.client_ts_id or self.client_ts_id not in getattr(
             settings, "CLIENT_TERMINOLOGY_SERVICES", []
         ):
+            debug_auth("Client application validation failed; client missing or not allowed")
             raise PermissionDenied(
                 "Client application is not allowed to use this service."
             )
@@ -111,29 +121,38 @@ class Auth:
         return True
 
     def abort_if_not_auth_provider(self) -> Optional[bool]:
+        debug_auth("Validating authentication provider")
         if not self.auth_provider or self.auth_provider not in getattr(
             settings, "AUTH_PROVIDERS", []
         ):
+            debug_auth("Provider validation failed; provider missing or not allowed")
             raise PermissionDenied("auth provider is not clear")
         return True
 
     def abort_if_userId_is_missing(self) -> Optional[bool]:
+        debug_auth("Validating local user exists")
         if not self.user_id:
+            debug_auth("Local user validation failed; user missing")
             raise PermissionDenied("Not Authorized user")
         return True
 
     def abort_if_user_is_blocked(self) -> None:
+        debug_auth("Checking local user block status")
         if not self.user_id:
+            debug_auth("Block status check failed; local user missing")
             raise BadRequest("incomplete request")
         user = UserModel.get_by_id(self.user_id)
         if user["is_blocked"]:
+            debug_auth("Authentication rejected; local user is blocked")
             raise PermissionDenied("Not Authorized user")
 
     def abort_if_user_token_is_not_valid(self) -> Optional[bool]:
+        debug_auth("Validating signed session token")
         token = get_jwt_token_from_request()
         try:
             jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         except:
+            debug_auth("Session token validation failed; token missing, invalid, or expired")
             raise PermissionDenied("Not Authorized user token")
         return True
 

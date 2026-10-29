@@ -39,4 +39,4 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["uvicorn", "user_service.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "3"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && exec uvicorn user_service.asgi:application --host 0.0.0.0 --port 8000 --workers 3"]

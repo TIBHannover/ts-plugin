@@ -96,21 +96,21 @@ The script defaults to Django's console email backend, so messages appear in the
 
 To save messages instead, set `EMAIL_BACKEND=django.core.mail.backends.filebased.EmailBackend`. Files default to `logs/emails`; override `EMAIL_FILE_PATH` to use another directory.
 
-To test real delivery, install and configure Postfix on the host, listening on loopback and accepting submissions only from localhost, then run:
+To test real delivery through the SMTP relay, run:
 
 ```bash
 PYTHON=.venv/bin/python \
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend \
-EMAIL_HOST=127.0.0.1 EMAIL_PORT=25 \
+EMAIL_HOST=mailgate.tib.eu EMAIL_PORT=25 \
 SYSTEM_EMAIL=notifications@example.org \
 scripts/local-dev.sh
 ```
 
-Host Postfix installation and startup are separate from the running script. Direct delivery from a local machine also needs suitable network access and sender DNS; use the console backend for routine development.
+The relay must allow connections from your machine and accept the `SYSTEM_EMAIL` sender address. Use the console backend for routine development.
 
 ### Production
 
-Docker Compose runs Postfix separately from the app and worker. Both submit to `postfix:25` on a dedicated mail network; no SMTP port is published to the host. Postfix delivers directly to recipient mail servers without an upstream SMTP relay. Its queue is stored in the `postfix_queue` volume, which must be retained across deployments.
+Docker Compose configures the app and worker to submit email directly to `mailgate.tib.eu:25`. TLS, SSL, and SMTP authentication are not configured for this relay setup. No Postfix container is required.
 
 Set the real sender address in the app's environment, using `user_service/.env.example` as a reference:
 
@@ -121,22 +121,9 @@ EMAIL_TIMEOUT=10
 
 Use a monitored sender address that can receive delivery failures. Compose supplies the SMTP backend, host and port for the app and worker. Existing `EMAIL_SERVER_HOST` and `EMAIL_SERVER_PORT` remain fallback settings outside Compose.
 
-Export the public mail hostname before deploying:
+The relay must allow the deployment server to connect on TCP port 25 and send using `SYSTEM_EMAIL`. `MAIL_USER_NAME` is not used as the sender or an SMTP login. `POSTFIX_HOSTNAME` is no longer required.
 
-```bash
-export POSTFIX_HOSTNAME=mail.example.org
-docker compose up -d --build
-```
-
-`POSTFIX_HOSTNAME` is read by Compose from its shell environment or project-level `.env`; it is separate from the app's `user_service/.env` file. Replace the example domain and configure:
-
-- A stable public sending IP with outbound TCP port 25 permitted.
-- Forward DNS for the mail hostname and matching reverse DNS (PTR) for the sending IP.
-- SPF authorizing that IP, DKIM signing, and DMARC for the sender domain. This setup does not include a DKIM signer; provision one separately and connect it to Postfix before relying on production delivery.
-
-The mail network uses `172.30.25.0/29`. Only the app (`172.30.25.2`) and worker (`172.30.25.3`) are trusted to relay. If that subnet conflicts with your infrastructure, update both `docker-compose.yml` and the allowlist in `docker/postfix/main.cf` together.
-
-Postfix logs to container stdout; application submission failures go to the configured service logs. SMTP acceptance means the message entered Postfix's queue, not that it reached an inbox. After acceptance, Postfix handles onward delivery retries and bounces.
+Application submission failures go to the configured service logs. SMTP acceptance means the relay accepted the message, not that it reached an inbox.
 
 ## License
 
