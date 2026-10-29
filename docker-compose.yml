@@ -25,7 +25,12 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: sh scripts/deploy.sh
+    command: ["sh", "-c", "rm -f /tmp/deployment-ready && sh scripts/deploy.sh && touch /tmp/deployment-ready && exec tail -f /dev/null"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/deployment-ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 60
     depends_on:
       db:
         condition: service_healthy
@@ -44,7 +49,7 @@ services:
     command: ["sh", "-c", "python manage.py collectstatic --noinput && exec uvicorn user_service.asgi:application --host 0.0.0.0 --port 8000 --workers 3"]
     depends_on:
       deployment:
-        condition: service_completed_successfully
+        condition: service_healthy
       db:
         condition: service_healthy
     networks:
@@ -79,7 +84,7 @@ services:
     command: celery -A user_service worker --loglevel=error --concurrency=20
     depends_on:
       deployment:
-        condition: service_completed_successfully
+        condition: service_healthy
       db:
         condition: service_healthy
       redis:
@@ -101,7 +106,7 @@ services:
     command: celery -A user_service beat --loglevel=error
     depends_on:
       deployment:
-        condition: service_completed_successfully
+        condition: service_healthy
       db:
         condition: service_healthy
       redis:
