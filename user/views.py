@@ -15,6 +15,7 @@ from user_service.middlewares.request import (
 )
 from user_service.middlewares.client_id import get_client_id_from_request
 from user.libs.auth import Auth
+from user.libs.auth_debug import debug_auth
 from user.models import (
     MAX_API_KEY_OWNER_DEPTH,
     OAuthLoginTransaction,
@@ -61,9 +62,12 @@ def hash_login_value(value):
 
 
 def get_login_transaction(request, auth_object_dict):
+    debug_auth("Login: validating OAuth state and browser session")
     if not auth_object_dict["state"] or not request.session.session_key:
+        debug_auth("Login: OAuth validation failed; state or browser session missing")
         raise PermissionDenied("OAuth login transaction is invalid")
 
+    debug_auth("Login: looking up OAuth transaction and checking expiry, session, provider, and client")
     with transaction.atomic():
         login_transaction = (
             OAuthLoginTransaction.objects.select_for_update()
@@ -78,8 +82,10 @@ def get_login_transaction(request, auth_object_dict):
             or login_transaction.auth_provider != auth_object_dict["auth_provider"]
             or login_transaction.client_ts_id != auth_object_dict["client_ts_id"]
         ):
+            debug_auth("Login: OAuth transaction missing, expired, or mismatched")
             raise PermissionDenied("OAuth login transaction is invalid")
         code_verifier = login_transaction.code_verifier
+        debug_auth("Login: OAuth transaction validated; consuming transaction")
         login_transaction.delete()
     return {"code_verifier": code_verifier}
 
@@ -87,12 +93,14 @@ def get_login_transaction(request, auth_object_dict):
 @error_handler_decorator
 @require_http_methods(["GET"])
 def login_state(request):
+    debug_auth("Login state: starting OAuth transaction setup")
     auth_object_dict = get_headers_dict()
     auth = Auth(**auth_object_dict)
     auth.abort_if_client_app_not_valid()
     auth.abort_if_not_auth_provider()
     state = auth_object_dict["state"]
     if not state or len(state) != 64:
+        debug_auth("Login state: state missing or invalid length")
         raise PermissionDenied("OAuth login state is invalid")
 
     transaction_defaults = {
@@ -101,16 +109,19 @@ def login_state(request):
     }
     response_data = {}
     if auth_object_dict["auth_provider"] in settings.AUTH_PROVIDERS_WITH_PKCE:
+        debug_auth("Login state: generating PKCE verifier and challenge")
         verifier = secrets.token_urlsafe(64)
         transaction_defaults["code_verifier"] = verifier
         digest = hashlib.sha256(verifier.encode()).digest()
         response_data["code_challenge"] = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
+    debug_auth("Login state: saving browser session")
     request.session["oauth_login_transaction"] = True
     request.session.save()
     now = timezone.now()
     session_key_hash = hash_login_value(request.session.session_key)
     state_hash = hash_login_value(state)
+    debug_auth("Login state: checking attempt limit and saving OAuth transaction")
     with transaction.atomic():
         Session.objects.select_for_update().get(session_key=request.session.session_key)
         OAuthLoginTransaction.objects.filter(expires_at__lt=now).delete()
@@ -123,6 +134,7 @@ def login_state(request):
             .count()
             >= MAX_OAUTH_TRANSACTIONS_PER_SESSION
         ):
+            debug_auth("Login state: rejected; too many OAuth login attempts")
             raise PermissionDenied("Too many OAuth login attempts")
         OAuthLoginTransaction.objects.update_or_create(
             state_hash=state_hash,
@@ -132,6 +144,7 @@ def login_state(request):
                 **transaction_defaults,
             },
         )
+    debug_auth("Login state: OAuth transaction ready")
     return JsonResponse({"_result": response_data})
 
 
@@ -152,6 +165,7 @@ def close_endpoint(request):
 @error_handler_decorator
 @require_http_methods(["POST"])
 def login(request):
+    debug_auth("Login: starting login request")
     _time = datetime.datetime
     auth_object_dict = get_headers_dict()
     auth = Auth(**auth_object_dict)
@@ -159,8 +173,10 @@ def login(request):
     auth.abort_if_not_auth_provider()
     transaction = get_login_transaction(request, auth_object_dict)
     auth.code_verifier = transaction.get("code_verifier")
+    debug_auth("Login: starting provider authentication")
     auth_response_dict = auth.authenticate()
     if auth_response_dict:
+        debug_auth("Login: provider authentication succeeded; preparing local user")
         created_at = _time.now()
         updated_at = _time.now()
         user_db_dict = {
@@ -173,11 +189,14 @@ def login(request):
             "user_extra": {},
         }
         user_model = UserModel(**user_db_dict)
+        debug_auth("Login: finding or registering local user")
         user = user_model.register_user_if_not_exist()
         if isinstance(user, str):
             # user is type of string means the model returned an error instead of a user instance.
+            debug_auth("Login: local user registration rejected")
             return create_json_response({"issue": user})
 
+        debug_auth("Login: local user ready; loading roles and settings")
         auth.user_id = user.id
         auth_response_dict["system_admin"] = RoleModel.objects.filter(
             user=user,
@@ -192,6 +211,7 @@ def login(request):
         csrf_token = secrets.token_urlsafe(32)
         auth_response_dict["csrf"] = csrf_token
         auth_response_dict["exp"] = expires
+        debug_auth("Login: signing session token")
         jwt_token = jwt.encode(
             auth_response_dict, settings.SECRET_KEY, algorithm="HS256"
         )
@@ -201,6 +221,7 @@ def login(request):
         auth_response_dict.pop("token", None)
         auth_response_dict.pop("csrf", None)
         response = JsonResponse({"_result": auth_response_dict})
+        debug_auth("Login: setting authentication cookie")
         response.set_cookie(
             "jwt",
             jwt_token,
@@ -211,7 +232,9 @@ def login(request):
         )
         if origin_requires_partitioned_cookie(request):
             set_partitioned_cookie(response, "jwt")
+        debug_auth("Login: completed successfully")
         return response
+    debug_auth("Login: rejected by authentication provider")
     return create_json_response({"issue": "auth is rejected"})
 
 
