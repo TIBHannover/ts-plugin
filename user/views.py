@@ -47,6 +47,8 @@ def set_partitioned_cookie(response, key):
 
 
 def origin_requires_partitioned_cookie(request):
+    if not settings.SESSION_COOKIE_SECURE:
+        return False
     origin = request.headers.get("Origin", "")
     if not origin:
         return False
