@@ -21,6 +21,15 @@ services:
     networks:
       - microservice
 
+  staticfiles_init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    user: root
+    command: ["chown", "-R", "ts-app:www-data", "/home/ts-app/staticfiles"]
+    volumes:
+      - staticfiles:/home/ts-app/staticfiles
+
   ts-plugin:
     container_name: ts-plugin
     build:
@@ -29,6 +38,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      staticfiles_init:
+        condition: service_completed_successfully
     networks:
       - microservice
     environment:
