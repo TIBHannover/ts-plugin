@@ -22,7 +22,7 @@ from django.core.exceptions import PermissionDenied
 from django.conf import settings
 import json
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes
 from note.docs import (
     NoteCreateRequestSerializer,
     NoteCreateResponseSerializer,
@@ -63,6 +63,7 @@ def ping(request):
     operation_description="Creates a note for a given ontology. Visibility can be 'me', 'internal', or 'public'.",
 )
 @api_view(["POST"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
@@ -119,6 +120,7 @@ def create(request):
     operation_description="Update a note for a given note id",
 )
 @api_view(["PUT"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -328,6 +330,7 @@ def get(request, note_id):
     operation_description="create a comment for a note",
 )
 @api_view(["POST"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
@@ -375,6 +378,7 @@ def create_comment(request):
     operation_description="update a comment for a note",
 )
 @api_view(["PUT"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -431,6 +435,7 @@ def update_comment(request):
     operation_description="delete a note or comment. Works for both notes and comments.",
 )
 @api_view(["DELETE"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["DELETE"])
