@@ -176,6 +176,8 @@ INSTALLED_APPS = [
     "ts",
     "django_celery_beat",
     "ai_assist",
+    "ontology_follow",
+    "notification.apps.NotificationConfig",
 ]
 AUTH_PROVIDERS_WITH_PKCE = ["github", "gitlab", "orcid"]
 

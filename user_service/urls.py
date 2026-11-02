@@ -26,6 +26,7 @@ schema_view = get_schema_view(
 urlpatterns = [
     path("admin_panel/", admin.site.urls),
     path("user/", include("user.urls")),
+    path("ontology_follow/", include("ontology_follow.urls")),
     path("report/", include("report.urls")),
     path("ontologysuggestion/", include("ontology_suggestion.urls")),
     path("note/", include("note.urls")),

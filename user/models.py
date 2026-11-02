@@ -41,6 +41,7 @@ class EmailLog(models.Model):
 class UserModel(models.Model):
     # description,title,api_key,expires_at and owner are only for api key. we treat api key as a user and set the owner to the api key creator.
     username = models.CharField()
+    email = models.EmailField(blank=True, default="")
     name = models.CharField(blank=True, null=True)
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField(blank=True, null=True)

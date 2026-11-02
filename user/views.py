@@ -37,7 +37,34 @@ import requests
 from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 from django.contrib.sessions.models import Session
+
+
+@error_handler_decorator
+@authentication_required
+@require_http_methods(["GET", "POST", "PUT", "DELETE"])
+def email(request):
+    user = UserModel.get_by_username(get_username_from_request())
+    if not user:
+        raise PermissionDenied("Not Authorized")
+    if request.method == "DELETE":
+        user.email = ""
+        user.save(update_fields=["email", "updated_at"])
+    elif request.method in ("POST", "PUT"):
+        try:
+            payload = json.loads(request.body)
+            address = payload.get("email") if isinstance(payload, dict) else None
+            if not isinstance(address, str) or len(address.strip()) > 254:
+                raise BadRequest("A valid email address is required")
+            address = address.strip()
+            validate_email(address)
+        except (ValueError, ValidationError):
+            raise BadRequest("A valid email address is required")
+        user.email = address
+        user.save(update_fields=["email", "updated_at"])
+    return create_json_response({"email": user.email})
 
 
 def set_partitioned_cookie(response, key):
