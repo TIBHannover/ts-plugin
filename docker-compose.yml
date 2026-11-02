@@ -54,10 +54,6 @@ services:
         condition: service_healthy
     networks:
       - microservice
-    environment:
-      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
-      EMAIL_HOST: mailgate.tib.eu
-      EMAIL_PORT: 25
     links:
       - db
     volumes:
@@ -93,10 +89,6 @@ services:
       - service_logs:/home/ts-app/logs
     networks:
       - microservice
-    environment:
-      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
-      EMAIL_HOST: mailgate.tib.eu
-      EMAIL_PORT: 25
 
   celery_beat:
     container_name: celery_beat
