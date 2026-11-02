@@ -20,7 +20,7 @@ import uuid
 from django.db.models import Q
 from user.libs.auth import Auth
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes
 from term_set.docs import (
     TermSetCreateRequestSerializer,
     TermSetUpdateRequestSerializer,
@@ -65,6 +65,7 @@ def ping(request):
     operation_description="Creates a term set for a given ontology. Visibility can be 'me', 'internal', or 'public'.",
 )
 @api_view(["POST"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["POST"])
@@ -186,6 +187,7 @@ def get(request, id=None):
     operation_description="Update a term set for a given term set id",
 )
 @api_view(["PUT"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -245,6 +247,7 @@ def update(request, id):
     operation_description="Delete a term set for a given term set id",
 )
 @api_view(["DELETE"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["DELETE"])
@@ -274,6 +277,7 @@ def delete(request, id):
     operation_description="Add a term to a term set for a given term set id",
 )
 @api_view(["PUT"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["PUT"])
@@ -315,6 +319,7 @@ def add_term(request, setId):
     operation_description="Remove a term from a term set for a given term set id",
 )
 @api_view(["DELETE"])
+@authentication_classes([])
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["DELETE"])
