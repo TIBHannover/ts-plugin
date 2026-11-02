@@ -29,7 +29,7 @@ def notify_ontology_followers(instance, event, user):
         user__client_ts=user.client_ts,
         user__is_active=True,
         user__is_blocked=False,
-    ).exclude(user__email="")
+    ).exclude(user_id=user.pk).exclude(user__email="")
     labels = {"note": "note", "issue": "issue or term request", "publication": "publication"}
     link = ontology_update_link(instance, event, user.client_ts)
     Email(
