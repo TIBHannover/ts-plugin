@@ -19,7 +19,7 @@ def follows(request):
         raise PermissionDenied("Not Authorized")
     if request.method == "GET":
         follows = list(user.ontology_follows.order_by("ontology_id").values(
-            "ontology_id", "notify_note", "notify_issue", "notify_publication"
+            "ontology_id", "notify_note", "notify_issue", "notify_publication", "notify_github"
         ))
         return create_json_response({
             "ontology_ids": [follow["ontology_id"] for follow in follows],
@@ -35,7 +35,7 @@ def follows(request):
     ontology_id = ontology_id.strip().lower()
     if request.method in ("POST", "PATCH"):
         preferences = {}
-        for field in ("notify_note", "notify_issue", "notify_publication"):
+        for field in ("notify_note", "notify_issue", "notify_publication", "notify_github"):
             if field in payload:
                 if not isinstance(payload[field], bool):
                     raise BadRequest(f"{field} must be a boolean")

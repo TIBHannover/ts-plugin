@@ -1,6 +1,8 @@
 from pathlib import Path
 import environ
 from celery.schedules import crontab
+from django_celery_beat.tzcrontab import TzAwareCrontab
+from zoneinfo import ZoneInfo
 
 # import logging
 import os
@@ -296,6 +298,10 @@ CHANNEL_LAYERS = {
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
 CELERY_BEAT_SCHEDULE = {
+    "ontology-github-digest-daily": {
+        "task": "notification.tasks.send_github_digests",
+        "schedule": TzAwareCrontab(hour=7, minute=0, tz=ZoneInfo("Europe/Berlin")),
+    },
     "harvest-ontologies-weekly": {
         "task": "ai_assist.tasks.harvest_ontologies_task",
         "schedule": crontab(day_of_week="monday", hour=0, minute=0),

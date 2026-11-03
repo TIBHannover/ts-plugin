@@ -38,7 +38,7 @@ class OntologyFollowTests(BaseTest):
         self.assertEqual(self.request("post", {"ontology_id": "vibso"}).status_code, 200)
         self.assertEqual(self.request("get").json()["_result"]["follows"], [{
             "ontology_id": "vibso", "notify_note": True,
-            "notify_issue": True, "notify_publication": True,
+            "notify_issue": True, "notify_publication": True, "notify_github": True,
         }])
 
     def test_each_preference_can_be_created_disabled_and_updated_independently(self):
@@ -60,7 +60,7 @@ class OntologyFollowTests(BaseTest):
 
     def test_all_disabled_preferences_are_saved_and_returned(self):
         payload = {"ontology_id": "vibso", "notify_note": False,
-                   "notify_issue": False, "notify_publication": False}
+                   "notify_issue": False, "notify_publication": False, "notify_github": False}
         self.assertEqual(self.request("post", payload).status_code, 200)
         self.assertEqual(self.request("get").json()["_result"], {
             "ontology_ids": ["vibso"], "follows": [payload],

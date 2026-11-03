@@ -11,6 +11,7 @@ class OntologyFollowModel(models.Model):
     notify_note = models.BooleanField(default=True)
     notify_issue = models.BooleanField(default=True)
     notify_publication = models.BooleanField(default=True)
+    notify_github = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
