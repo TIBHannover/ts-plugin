@@ -75,6 +75,7 @@ class OntologyNotificationTests(TestCase):
                 self.assertEqual(log.client_ts, "general")
                 self.assertEqual(log.notification_type, f"ontology_{event}")
                 self.assertEqual(log.reference, f"{event}:{content.pk}")
+                self.assertEqual(log.subject, "Ontology update: vibso")
                 self.delay.assert_called_once()
                 self.assertEqual(self.delay.call_args.args[0], log.pk)
 
@@ -147,6 +148,65 @@ class OntologyNotificationTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             self.create_content("issue", issue_type="termRequest")
         self.assertEqual(EmailLog.objects.get().notification_type, "ontology_issue")
+        self.assertEqual(EmailLog.objects.get().subject, "Ontology update: vibso")
+
+    def test_each_preference_only_disables_its_own_category(self):
+        follow = self.follower.ontology_follows.get()
+        for disabled in ("note", "issue", "publication"):
+            for event, kwargs in (("note", {}), ("publication", {}), ("issue", {}),
+                                  ("issue", {"issue_type": "termRequest"})):
+                with self.subTest(disabled=disabled, event=event, **kwargs):
+                    for category in ("note", "issue", "publication"):
+                        setattr(follow, f"notify_{category}", category != disabled)
+                    follow.save()
+                    EmailLog.objects.all().delete()
+                    self.delay.reset_mock()
+                    with self.captureOnCommitCallbacks(execute=True):
+                        self.create_content(event, **kwargs)
+                    if event == disabled:
+                        self.assertFalse(EmailLog.objects.exists())
+                        self.delay.assert_not_called()
+                    else:
+                        self.assertEqual(EmailLog.objects.get().recipient, self.follower.email)
+                        self.delay.assert_called_once()
+
+    def test_all_disabled_preferences_keep_follow_but_send_no_notifications(self):
+        self.follower.ontology_follows.update(
+            notify_note=False, notify_issue=False, notify_publication=False,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            for event in ("note", "publication", "issue"):
+                self.create_content(event)
+            self.create_content("issue", issue_type="termRequest")
+        self.assertTrue(self.follower.ontology_follows.exists())
+        self.assertFalse(EmailLog.objects.exists())
+        self.delay.assert_not_called()
+
+    def test_disabled_follower_does_not_affect_other_followers(self):
+        disabled = self.follow(self.make_user("disabled", email="disabled@example.org"))
+        disabled.notify_note = False
+        disabled.notify_issue = False
+        disabled.notify_publication = False
+        disabled.save()
+        for event in ("note", "publication", "issue"):
+            with self.subTest(event=event):
+                EmailLog.objects.all().delete()
+                self.delay.reset_mock()
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.create_content(event)
+                self.assertEqual(EmailLog.objects.get().recipient, self.follower.email)
+                self.delay.assert_called_once()
+
+    def test_reenabled_preference_notifies_again(self):
+        self.follower.ontology_follows.update(notify_note=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.create_content("note")
+        self.assertFalse(EmailLog.objects.exists())
+        self.follower.ontology_follows.update(notify_note=True)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.create_content("note")
+        self.assertEqual(EmailLog.objects.get().recipient, self.follower.email)
+        self.delay.assert_called_once()
 
     def test_issue_with_conflicting_client_does_not_notify(self):
         with self.captureOnCommitCallbacks(execute=True):

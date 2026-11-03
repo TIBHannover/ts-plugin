@@ -29,11 +29,12 @@ def notify_ontology_followers(instance, event, user):
         user__client_ts=user.client_ts,
         user__is_active=True,
         user__is_blocked=False,
+        **{f"notify_{event}": True},
     ).exclude(user_id=user.pk).exclude(user__email="")
     labels = {"note": "note", "issue": "issue or term request", "publication": "publication"}
     link = ontology_update_link(instance, event, user.client_ts)
     Email(
-        "Ontology update",
+        f"Ontology update: {ontology_id}",
         f'A new {labels[event]} has been added to ontology "{ontology_id}".\n'
         f"Reference: {event}:{instance.pk}" + (f"\n{link}" if link else ""),
         client_ts=user.client_ts,
