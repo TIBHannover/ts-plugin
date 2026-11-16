@@ -1,7 +1,9 @@
 import logging
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import transaction
+from django.template.loader import render_to_string
 
 from user.models import EmailLog, RoleModel
 from user.tasks import send_notification_email
@@ -18,7 +20,26 @@ class Email:
         self.sender_email = settings.DEFAULT_FROM_EMAIL
         self.client_ts = client_ts
 
-    def send(self, recipients, notification_type="general", reference=""):
+    def send(self, recipients, notification_type="general", reference="", is_admin=False):
+        base = getattr(settings, f"{self.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
+        footer_links = [
+            (label, urljoin(base.rstrip("/") + "/", path))
+            for label, path in (("Contact", "contact"), ("Documentation", "docs"), ("Terms of Use", "TermsOfUse"))
+        ] if base else []
+        service_description = (
+            "The Terminology Service helps you find and explore ontologies and share knowledge "
+            "through notes, publications, and term requests."
+        )
+        html_body = render_to_string("notification/email.html", {
+            "subject": self.subject, "body": self.body, "html_body": self.html_body,
+            "service_description": service_description, "footer_links": footer_links,
+            "is_admin": is_admin,
+        })
+        body = (
+            ("FOR SYSTEM ADMINS\n\n" if is_admin else "") + self.body
+            + f"\n\nAbout the Terminology Service\n{service_description}\n"
+            + "".join(f"\n{label}: {url}" for label, url in footer_links)
+        )
         logs = []
         for recipient in dict.fromkeys(recipients):
             email_log = EmailLog.objects.create(
@@ -33,10 +54,7 @@ class Email:
 
             def enqueue(email_log_id=email_log.pk):
                 try:
-                    if self.html_body is None:
-                        send_notification_email.delay(email_log_id, self.body)
-                    else:
-                        send_notification_email.delay(email_log_id, self.body, self.html_body)
+                    send_notification_email.delay(email_log_id, body, html_body)
                 except Exception as exc:
                     EmailLog.objects.filter(pk=email_log_id).update(
                         status=EmailLog.Status.FAILED, last_error=str(exc)
@@ -51,5 +69,6 @@ class Email:
             RoleModel(client_ts=self.client_ts).get_system_admin_emails(),
             notification_type="content_report",
             reference=reference,
+            is_admin=True,
         )
         return True

@@ -22,26 +22,14 @@ def ontology_update_link(instance, event, client_ts):
 
 
 def note_email_content(instance, user, link):
-    base = getattr(settings, f"{user.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
-    footer_links = [
-        (label, urljoin(base.rstrip("/") + "/", path))
-        for label, path in (("Contact", "contact"), ("Documentation", "docs"), ("Terms of Use", "TermsOfUse"))
-    ] if base else []
-    service_description = (
-        "The Terminology Service helps you find and explore ontologies and share knowledge "
-        "through notes, publications, and term requests. You received this email because "
-        "you follow this ontology and have note notifications enabled."
-    )
     body = (
         f'A new note has been added to ontology "{instance.ontology_id.strip().lower()}".\n\n'
         f"Title: {instance.title}\nCreated by: {user.username}\n"
         + (f"View note: {link}\n" if link else "")
-        + f"\nAbout the Terminology Service\n{service_description}\n"
-        + "".join(f"\n{label}: {url}" for label, url in footer_links)
+        + "\nYou received this email because you follow this ontology and have note notifications enabled."
     )
     return body, render_to_string("notification/new_note_email.html", {
         "note": instance, "username": user.username, "note_url": link,
-        "service_description": service_description, "footer_links": footer_links,
     })
 
 

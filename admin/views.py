@@ -96,7 +96,7 @@ def send_test_email(request):
         subject="TS Plugin test email",
         body="This is a test email from the TS Plugin service.",
         client_ts=client_ts,
-    ).send([role.role_holder_email], notification_type="test_email")
+    ).send([role.role_holder_email], notification_type="test_email", is_admin=True)
     logs[0].refresh_from_db()
     if logs[0].status == "failed":
         return JsonResponse({"_result": "Could not queue test email"}, status=503)

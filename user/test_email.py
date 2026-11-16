@@ -1,5 +1,5 @@
 from smtplib import SMTPDataError, SMTPRecipientsRefused, SMTPServerDisconnected
-from unittest.mock import call, patch
+from unittest.mock import ANY, call, patch
 
 from celery.exceptions import Retry
 from django.core import mail
@@ -42,8 +42,14 @@ class EmailTests(TestCase):
             self.assertEqual(EmailLog.objects.count(), 2)
         self.assertEqual(
             delay.call_args_list,
-            [call(log.pk, self.email.body) for log in logs],
+            [call(log.pk, ANY, ANY) for log in logs],
         )
+        for queued in delay.call_args_list:
+            self.assertIn(self.email.body, queued.args[1])
+            self.assertIn("About the Terminology Service", queued.args[2])
+            self.assertIn("site_logo.webp", queued.args[2])
+            self.assertNotIn("FOR SYSTEM ADMINS", queued.args[1])
+            self.assertNotIn("FOR SYSTEM ADMINS", queued.args[2])
         for log in logs:
             self.assertEqual(log.notification_type, "reminder")
             self.assertEqual(log.reference, "collection:42")
@@ -98,13 +104,64 @@ class EmailTests(TestCase):
                 target_object_type=target, target_object_id="",
                 role_holder_email=address, created_at=timezone.now(),
             )
-        with patch("user_service.libs.email.send_notification_email.delay"):
+        with patch("user_service.libs.email.send_notification_email.delay") as delay:
             with self.captureOnCommitCallbacks(execute=True):
                 self.email.report_content_to_admins(reference="report:42")
         log = EmailLog.objects.get()
         self.assertEqual(log.recipient, "admin@example.org")
         self.assertEqual(log.notification_type, "content_report")
         self.assertEqual(log.reference, "report:42")
+        self.assertIn("FOR SYSTEM ADMINS", delay.call_args.args[1])
+        self.assertIn("FOR SYSTEM ADMINS", delay.call_args.args[2])
+        self.assertIn("background:#b91c1c", delay.call_args.args[2])
+
+    @patch("user_service.libs.email.send_notification_email.delay")
+    def test_shared_footer_uses_only_the_current_clients_frontend_base(self, delay):
+        for client_ts in ("general", "nfdi4chem"):
+            for base in ("https://example.org/ts", "https://example.org/ts/"):
+                with self.subTest(client_ts=client_ts, base=base), override_settings(**{
+                    f"{client_ts.upper()}_FRONTEND_REDIRECT_URL": base,
+                    f"{'NFDI4CHEM' if client_ts == 'general' else 'GENERAL'}_FRONTEND_REDIRECT_URL": "https://other-client.example/ts/",
+                }):
+                    with self.captureOnCommitCallbacks(execute=True):
+                        Email("Profile confirmation", "Address added", client_ts=client_ts).send(["user@example.org"])
+                    for content in delay.call_args.args[1:]:
+                        for path in ("contact", "docs", "TermsOfUse"):
+                            self.assertIn(f"https://example.org/ts/{path}", content)
+                        self.assertNotIn("FOR SYSTEM ADMINS", content)
+                        self.assertNotIn("other-client.example", content)
+
+    @override_settings(GENERAL_FRONTEND_REDIRECT_URL=None)
+    @patch("user_service.libs.email.send_notification_email.delay")
+    def test_missing_frontend_base_omits_footer_links_but_keeps_shared_layout(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.email.send(["user@example.org"])
+        for content in delay.call_args.args[1:]:
+            self.assertIn("About the Terminology Service", content)
+            self.assertNotIn("TermsOfUse", content)
+        self.assertIn("site_logo.webp", delay.call_args.args[2])
+
+    @patch("user_service.libs.email.send_notification_email.delay")
+    def test_shared_html_escapes_subject_and_body_and_preserves_links(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            Email("<script>subject</script>", '<img src=x onerror="alert(1)">\nhttps://example.org/note').send(["user@example.org"])
+        html = delay.call_args.args[2]
+        self.assertNotIn("<script>", html)
+        self.assertNotIn("<img src=x", html)
+        self.assertIn("&lt;script&gt;subject&lt;/script&gt;", html)
+        self.assertIn("&lt;img", html)
+        self.assertIn('href="https://example.org/note"', html)
+
+    @patch("user_service.libs.email.send_notification_email.delay")
+    def test_queued_shared_html_reaches_email_backend_as_alternative(self, delay):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.email.send(["user@example.org"])
+        send_notification_email.run(*delay.call_args.args)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.body, delay.call_args.args[1])
+        self.assertEqual(message.alternatives[0][0], delay.call_args.args[2])
+        self.assertEqual(message.alternatives[0][1], "text/html")
 
     def test_development_backend_captures_message_and_records_attempt(self):
         log = self.make_log()

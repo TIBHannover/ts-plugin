@@ -10,7 +10,7 @@ from user_service.libs.utils import make_hash
 
 @override_settings(DEBUG=False)
 class TestSendTestEmail(TransactionTestCase):
-    available_apps = ["user", "admin"]
+    available_apps = ["user", "admin", "notification"]
 
     def setUp(self):
         self.url = "/admin/send_test_email/"
@@ -81,9 +81,13 @@ class TestSendTestEmail(TransactionTestCase):
             response.json()["_result"],
             {"email_log_id": email_log.pk, "status": EmailLog.Status.QUEUED},
         )
-        self.queue_email.assert_called_once_with(
-            email_log.pk, "This is a test email from the TS Plugin service."
-        )
+        self.queue_email.assert_called_once()
+        self.assertEqual(self.queue_email.call_args.args[0], email_log.pk)
+        for content in self.queue_email.call_args.args[1:]:
+            self.assertIn("This is a test email from the TS Plugin service.", content)
+            self.assertIn("FOR SYSTEM ADMINS", content)
+            self.assertIn("About the Terminology Service", content)
+        self.assertIn("background:#b91c1c", self.queue_email.call_args.args[2])
 
     def test_anonymous_request_is_rejected(self):
         self.create_role()

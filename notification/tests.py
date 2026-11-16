@@ -41,7 +41,7 @@ class OntologyNotificationTests(TestCase):
         fields = {"ontology_id": " ViBsO ", "created_at": timezone.now(), **kwargs}
         if event == "note":
             return NoteModel.objects.create(
-                creator=creator, title="New note", content="Note content",
+                creator=creator, title=fields.pop("title", "New note"), content="Note content",
                 semantic_component_type="ontology", semantic_component_iri="",
                 **{"visibility": "public", **fields},
             )
@@ -78,6 +78,26 @@ class OntologyNotificationTests(TestCase):
                 self.assertEqual(log.subject, "Ontology update: vibso")
                 self.delay.assert_called_once()
                 self.assertEqual(self.delay.call_args.args[0], log.pk)
+                html = self.delay.call_args.args[2]
+                self.assertIn("site_logo.webp", html)
+                self.assertIn("About the Terminology Service", html)
+                self.assertIn("https://general.example/ts/contact", html)
+                self.assertNotIn("FOR SYSTEM ADMINS", html)
+
+    def test_note_content_is_escaped_inside_one_shared_layout(self):
+        self.creator.username = "<script>creator</script>"
+        self.creator.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            note = self.create_content("note", title="<script>note title</script>")
+        body, html = self.delay.call_args.args[1:]
+        self.assertIn(note.title, body)
+        self.assertIn(self.creator.username, body)
+        self.assertIn("&lt;script&gt;note title&lt;/script&gt;", html)
+        self.assertIn("&lt;script&gt;creator&lt;/script&gt;", html)
+        self.assertNotIn("<script>", html)
+        self.assertEqual(html.count("<!doctype html>"), 1)
+        self.assertEqual(html.count("About the Terminology Service"), 1)
+        self.assertIn(f"https://general.example/ts/ontologies/vibso/notes?noteId={note.pk}", html)
 
     def test_same_username_in_other_client_receives_only_its_own_clients_updates(self):
         creator = self.make_user("creator", client_ts="nfdi4chem")
