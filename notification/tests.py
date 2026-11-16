@@ -47,10 +47,10 @@ class OntologyNotificationTests(TestCase):
             )
         if event == "publication":
             return PubLinkModel.objects.create(
-                creator=creator, doi="10.1234/example", citation="Example publication", **fields,
+                creator=creator, doi="10.1234/example", citation=fields.pop("citation", "Example publication"), **fields,
             )
         return GithubIssueRequestModel.objects.create(
-            user=creator, issue_title="New issue", issue_content="Issue content",
+            user=creator, issue_title=fields.pop("issue_title", "New issue"), issue_content="Issue content",
             issue_url="https://github.com/example/ontology/issues/1",
             **{"client_ts": creator.client_ts, "issue_type": "general", **fields},
         )
@@ -83,6 +83,49 @@ class OntologyNotificationTests(TestCase):
                 self.assertIn("About the Terminology Service", html)
                 self.assertIn("https://general.example/ts/contact", html)
                 self.assertNotIn("FOR SYSTEM ADMINS", html)
+
+    def test_emails_identify_new_objects_by_title_or_citation(self):
+        for event, fields, expected in (
+            ("note", {"title": "A useful note"}, "A useful note"),
+            ("issue", {"issue_title": "Missing ontology synonym"}, "Missing ontology synonym"),
+            ("issue", {"issue_type": "termRequest", "issue_title": "Add a new chemical term"}, "Add a new chemical term"),
+            ("publication", {"citation": "Smith et al. (2026), Ontology applications"}, "Smith et al. (2026), Ontology applications"),
+        ):
+            with self.subTest(event=event, fields=fields):
+                with self.captureOnCommitCallbacks(execute=True):
+                    content = self.create_content(event, **fields)
+                for body in self.delay.call_args.args[1:]:
+                    self.assertIn(expected, body)
+                    self.assertNotIn("Reference:", body)
+                self.assertEqual(EmailLog.objects.latest("pk").reference, f"{event}:{content.pk}")
+
+    def test_publication_without_citation_uses_doi(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.create_content("publication", citation="")
+        for body in self.delay.call_args.args[1:]:
+            self.assertIn("10.1234/example", body)
+            self.assertNotIn("Reference:", body)
+
+    def test_issue_without_title_does_not_fall_back_to_object_id(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            content = self.create_content("issue", issue_title="")
+        for body in self.delay.call_args.args[1:]:
+            self.assertIn("A new issue or term request has been added", body)
+            self.assertNotIn("Reference:", body)
+            self.assertNotIn(f"issue:{content.pk}", body)
+
+    def test_issue_titles_and_publication_citations_are_escaped_in_html(self):
+        for event, fields in (
+            ("issue", {"issue_title": "<script>Issue title</script>"}),
+            ("publication", {"citation": "<script>Publication citation</script>"}),
+        ):
+            with self.subTest(event=event):
+                with self.captureOnCommitCallbacks(execute=True):
+                    self.create_content(event, **fields)
+                body, html = self.delay.call_args.args[1:]
+                self.assertIn("<script>", body)
+                self.assertNotIn("<script>", html)
+                self.assertIn("&lt;script&gt;", html)
 
     def test_note_content_is_escaped_inside_one_shared_layout(self):
         self.creator.username = "<script>creator</script>"

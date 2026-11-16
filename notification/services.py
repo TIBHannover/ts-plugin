@@ -46,9 +46,13 @@ def notify_ontology_followers(instance, event, user):
     ).exclude(user_id=user.pk).exclude(user__email="")
     labels = {"note": "note", "issue": "issue or term request", "publication": "publication"}
     link = ontology_update_link(instance, event, user.client_ts)
+    title = getattr(instance, {"note": "title", "issue": "issue_title", "publication": "citation"}[event], "")
+    if event == "publication" and not title:
+        title = instance.doi
     body = (
         f'A new {labels[event]} has been added to ontology "{ontology_id}".\n'
-        f"Reference: {event}:{instance.pk}" + (f"\n{link}" if link else "")
+        + (f"\n{title}\n" if title else "")
+        + (f"\n{link}" if link else "")
     )
     html_body = None
     if event == "note":
