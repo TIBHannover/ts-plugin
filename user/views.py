@@ -33,6 +33,7 @@ from django.conf import settings
 from django.core.exceptions import BadRequest, PermissionDenied
 from django.http import JsonResponse
 from user_service.libs.utils import make_hash
+from user_service.libs.email import Email
 import requests
 from django.core.cache import cache
 from django.db import transaction
@@ -62,8 +63,18 @@ def email(request):
             validate_email(address)
         except (ValueError, ValidationError):
             raise BadRequest("A valid email address is required")
-        user.email = address
-        user.save(update_fields=["email", "updated_at"])
+        if user.email != address:
+            with transaction.atomic():
+                user.email = address
+                user.save(update_fields=["email", "updated_at"])
+                Email(
+                    subject="Profile email confirmation",
+                    body=f"This email address ({address}) has been added to your TS Plugin profile.",
+                    client_ts=user.client_ts,
+                ).send(
+                    [address], notification_type="profile_email_confirmation",
+                    reference=f"user:{user.pk}",
+                )
     return create_json_response({"email": user.email})
 
 
