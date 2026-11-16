@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class Email:
-    def __init__(self, subject, body, client_ts=""):
+    def __init__(self, subject, body, client_ts="", html_body=None):
         self.subject = subject
         self.body = body
+        self.html_body = html_body
         self.sender_email = settings.DEFAULT_FROM_EMAIL
         self.client_ts = client_ts
 
@@ -32,7 +33,10 @@ class Email:
 
             def enqueue(email_log_id=email_log.pk):
                 try:
-                    send_notification_email.delay(email_log_id, self.body)
+                    if self.html_body is None:
+                        send_notification_email.delay(email_log_id, self.body)
+                    else:
+                        send_notification_email.delay(email_log_id, self.body, self.html_body)
                 except Exception as exc:
                     EmailLog.objects.filter(pk=email_log_id).update(
                         status=EmailLog.Status.FAILED, last_error=str(exc)

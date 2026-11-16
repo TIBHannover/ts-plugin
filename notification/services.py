@@ -1,6 +1,7 @@
 from urllib.parse import quote, urljoin
 
 from django.conf import settings
+from django.template.loader import render_to_string
 
 from ontology_follow.models import OntologyFollowModel
 from user_service.libs.email import Email
@@ -20,6 +21,30 @@ def ontology_update_link(instance, event, client_ts):
     return link
 
 
+def note_email_content(instance, user, link):
+    base = getattr(settings, f"{user.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
+    footer_links = [
+        (label, urljoin(base.rstrip("/") + "/", path))
+        for label, path in (("Contact", "contact"), ("Documentation", "docs"), ("Terms of Use", "TermsOfUse"))
+    ] if base else []
+    service_description = (
+        "The Terminology Service helps you find and explore ontologies and share knowledge "
+        "through notes, publications, and term requests. You received this email because "
+        "you follow this ontology and have note notifications enabled."
+    )
+    body = (
+        f'A new note has been added to ontology "{instance.ontology_id.strip().lower()}".\n\n'
+        f"Title: {instance.title}\nCreated by: {user.username}\n"
+        + (f"View note: {link}\n" if link else "")
+        + f"\nAbout the Terminology Service\n{service_description}\n"
+        + "".join(f"\n{label}: {url}" for label, url in footer_links)
+    )
+    return body, render_to_string("notification/new_note_email.html", {
+        "note": instance, "username": user.username, "note_url": link,
+        "service_description": service_description, "footer_links": footer_links,
+    })
+
+
 def notify_ontology_followers(instance, event, user):
     if event == "note" and (not instance.active or instance.visibility == "me"):
         return
@@ -33,11 +58,18 @@ def notify_ontology_followers(instance, event, user):
     ).exclude(user_id=user.pk).exclude(user__email="")
     labels = {"note": "note", "issue": "issue or term request", "publication": "publication"}
     link = ontology_update_link(instance, event, user.client_ts)
+    body = (
+        f'A new {labels[event]} has been added to ontology "{ontology_id}".\n'
+        f"Reference: {event}:{instance.pk}" + (f"\n{link}" if link else "")
+    )
+    html_body = None
+    if event == "note":
+        body, html_body = note_email_content(instance, user, link)
     Email(
         f"Ontology update: {ontology_id}",
-        f'A new {labels[event]} has been added to ontology "{ontology_id}".\n'
-        f"Reference: {event}:{instance.pk}" + (f"\n{link}" if link else ""),
+        body,
         client_ts=user.client_ts,
+        html_body=html_body,
     ).send(
         followers.values_list("user__email", flat=True),
         notification_type=f"ontology_{event}",

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=5)
-def send_notification_email(self, email_log_id, body):
+def send_notification_email(self, email_log_id, body, html_body=None):
     email_log = EmailLog.objects.get(pk=email_log_id)
     if email_log.status in (EmailLog.Status.SUBMITTED, EmailLog.Status.CAPTURED):
         return
@@ -29,7 +29,7 @@ def send_notification_email(self, email_log_id, body):
         connection = get_connection()
         if not send_mail(
             email_log.subject, body, email_log.sender, [email_log.recipient],
-            fail_silently=False, connection=connection,
+            fail_silently=False, connection=connection, html_message=html_body,
         ):
             raise SMTPException("Email backend did not accept the message")
     except Exception as exc:
