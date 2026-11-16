@@ -27,8 +27,12 @@ class Email:
             for label, path in (("Contact", "contact"), ("Documentation", "docs"), ("Terms of Use", "TermsOfUse"))
         ] if base else []
         service_description = (
-            "The Terminology Service helps you find and explore ontologies and share knowledge "
-            "through notes, publications, and term requests."
+            "The Terminology Service provides a central access point to current ontologies and "
+            "scientific vocabularies. Search and browse ontology terms, definitions, and relationships "
+            "through the website, or retrieve terminology through the API to integrate it into "
+            "research tools and data repositories. The service supports consistent, machine-readable "
+            "descriptions of research data and helps make it FAIR: findable, accessible, interoperable, "
+            "and reusable."
         )
         html_body = render_to_string("notification/email.html", {
             "subject": self.subject, "body": self.body, "html_body": self.html_body,
