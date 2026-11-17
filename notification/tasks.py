@@ -38,7 +38,7 @@ def digest_section(ontology_id, metadata, updates):
 def send_github_digests(self, window_end=None):
     end = datetime.fromisoformat(window_end) if window_end else digest_window_end(timezone.now())
     follows = OntologyFollowModel.objects.filter(
-        notify_github=True, user__is_active=True, user__is_blocked=False,
+        notify_github=True, user__is_active=True, user__is_blocked=False, user__email_verified=True,
     ).exclude(user__email="")
     sections = {}
     retry_needed = False
@@ -52,7 +52,7 @@ def send_github_digests(self, window_end=None):
     for user_id in follows.values_list("user_id", flat=True).distinct():
         with transaction.atomic():
             user = UserModel.objects.select_for_update().get(pk=user_id)
-            if not user.is_active or user.is_blocked or not user.email:
+            if not user.is_active or user.is_blocked or not user.email or not user.email_verified:
                 continue
             ontology_ids = list(user.ontology_follows.filter(notify_github=True).order_by("ontology_id").values_list("ontology_id", flat=True))
             if any(oid not in sections for oid in ontology_ids):

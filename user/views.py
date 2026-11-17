@@ -28,7 +28,7 @@ import json
 from jose import jwt
 import datetime
 from http.cookies import Morsel
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 from django.conf import settings
 from django.core.exceptions import BadRequest, PermissionDenied
 from django.http import JsonResponse
@@ -41,18 +41,24 @@ from django.utils import timezone
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.contrib.sessions.models import Session
+from django.core import signing
+from django.template.loader import render_to_string
 
 
 @error_handler_decorator
 @authentication_required
 @require_http_methods(["GET", "POST", "PUT", "DELETE"])
+@transaction.atomic
 def email(request):
     user = UserModel.get_by_username(get_username_from_request())
     if not user:
         raise PermissionDenied("Not Authorized")
+    user = UserModel.objects.select_for_update().get(pk=user.pk)
     if request.method == "DELETE":
         user.email = ""
-        user.save(update_fields=["email", "updated_at"])
+        user.email_verified = False
+        user.email_verification_token = ""
+        user.save(update_fields=["email", "email_verified", "email_verification_token", "updated_at"])
     elif request.method in ("POST", "PUT"):
         try:
             payload = json.loads(request.body)
@@ -63,19 +69,58 @@ def email(request):
             validate_email(address)
         except (ValueError, ValidationError):
             raise BadRequest("A valid email address is required")
-        if user.email != address:
-            with transaction.atomic():
-                user.email = address
-                user.save(update_fields=["email", "updated_at"])
-                Email(
-                    subject="Profile email confirmation",
-                    body=f"This email address ({address}) has been added to your TS Plugin profile.",
-                    client_ts=user.client_ts,
-                ).send(
-                    [address], notification_type="profile_email_confirmation",
-                    reference=f"user:{user.pk}",
-                )
-    return create_json_response({"email": user.email})
+        if user.email != address or not user.email_verified:
+            frontend_url = getattr(settings, f"{user.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
+            if not frontend_url:
+                raise BadRequest("Email activation is not configured for this terminology service")
+            token = signing.dumps({
+                "user_id": user.pk, "email": address, "client_ts": user.client_ts,
+                "nonce": secrets.token_urlsafe(32),
+            }, salt="profile-email")
+            user.email = address
+            user.email_verified = False
+            user.email_verification_token = hash_login_value(token)
+            user.save(update_fields=["email", "email_verified", "email_verification_token", "updated_at"])
+            activation_url = urljoin(frontend_url.rstrip("/") + "/", "email/activate") + "?" + urlencode({"token": token})
+            Email(
+                subject="Activate your email address",
+                body=f"Confirm your email address ({address}) to enable ontology notifications.\n\n"
+                f"Activate email: {activation_url}\n\nThis link expires in 24 hours. "
+                "If you did not request this, ignore this email.",
+                client_ts=user.client_ts,
+                html_body=render_to_string("user/activation_email.html", {
+                    "email": address, "activation_url": activation_url,
+                }),
+            ).send(
+                [address], notification_type="profile_email_confirmation",
+                reference=f"user:{user.pk}",
+            )
+    return create_json_response({"email": user.email, "email_verified": user.email_verified})
+
+
+@error_handler_decorator
+@never_cache
+@require_http_methods(["POST"])
+def activate_email(request):
+    try:
+        data = json.loads(request.body)
+    except ValueError:
+        raise BadRequest("An activation token is required")
+    token = data.get("token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token:
+        raise BadRequest("An activation token is required")
+    try:
+        payload = signing.loads(token, salt="profile-email", max_age=24 * 60 * 60)
+    except signing.BadSignature:
+        raise BadRequest("This activation link is invalid or expired. Save your email again to request a new link.")
+    users = UserModel.objects.filter(
+        pk=payload["user_id"], email=payload["email"], client_ts=payload["client_ts"],
+        email_verification_token=hash_login_value(token), email_verified=False,
+        is_active=True, is_blocked=False,
+    )
+    if not users.update(email_verified=True, email_verification_token="", updated_at=timezone.now()):
+        raise BadRequest("This activation link is no longer valid. Save your email again to request a new link.")
+    return create_json_response({"email_verified": True})
 
 
 def set_partitioned_cookie(response, key):

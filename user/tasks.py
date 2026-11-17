@@ -11,7 +11,7 @@ from smtplib import (
     SMTPServerDisconnected,
 )
 
-from user.models import EmailLog, OAuthLoginTransaction
+from user.models import EmailLog, OAuthLoginTransaction, UserModel
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 def send_notification_email(self, email_log_id, body, html_body=None):
     email_log = EmailLog.objects.get(pk=email_log_id)
     if email_log.status in (EmailLog.Status.SUBMITTED, EmailLog.Status.CAPTURED):
+        return
+    if email_log.notification_type.startswith("ontology_") and not UserModel.objects.filter(
+        email=email_log.recipient, client_ts=email_log.client_ts,
+        email_verified=True, is_active=True, is_blocked=False,
+    ).exists():
+        EmailLog.objects.filter(pk=email_log_id).update(
+            status=EmailLog.Status.FAILED, last_error="Recipient email is no longer verified or active",
+        )
         return
     EmailLog.objects.filter(pk=email_log_id).update(
         attempts=F("attempts") + 1, status=EmailLog.Status.QUEUED, last_error=""

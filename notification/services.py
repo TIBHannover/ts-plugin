@@ -42,6 +42,7 @@ def notify_ontology_followers(instance, event, user):
         user__client_ts=user.client_ts,
         user__is_active=True,
         user__is_blocked=False,
+        user__email_verified=True,
         **{f"notify_{event}": True},
     ).exclude(user_id=user.pk).exclude(user__email="")
     labels = {"note": "note", "issue": "issue or term request", "publication": "publication"}

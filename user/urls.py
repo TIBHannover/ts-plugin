@@ -3,6 +3,7 @@ from . import views
 from django.views.decorators.csrf import csrf_exempt
 
 urlpatterns = [
+    path("email/activate/", csrf_exempt(views.activate_email), name="activate_email"),
     path("email/", csrf_exempt(views.email), name="user_email"),
     path("ping/", views.ping, name="ping"),
     path("close_endpoint/", views.close_endpoint, name="close_endpoint"),
