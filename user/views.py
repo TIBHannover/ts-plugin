@@ -70,7 +70,10 @@ def email(request):
         except (ValueError, ValidationError):
             raise BadRequest("A valid email address is required")
         if user.email != address or not user.email_verified:
-            frontend_url = getattr(settings, f"{user.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
+            frontend_url = (
+                getattr(settings, f"{user.client_ts.upper()}_EMAIL_ACTIVATION_BASE_URL", None)
+                or getattr(settings, f"{user.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
+            )
             if not frontend_url:
                 raise BadRequest("Email activation is not configured for this terminology service")
             token = signing.dumps({
