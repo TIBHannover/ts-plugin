@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from notification.github_updates import github_window_start, ontology_github_updates
 from ontology_follow.models import OntologyFollowModel
+from ontology_follow.links import unfollow_link
 from user.models import EmailLog, UserModel
 from user_service.libs.email import Email
 
@@ -68,6 +69,11 @@ def send_github_digests(self, window_end=None):
             )
             Email(
                 f'GitHub updates: {", ".join(included)}', body, client_ts=user.client_ts,
+                unfollow_links=[
+                    (follow.ontology_id, url)
+                    for follow in user.ontology_follows.filter(ontology_id__in=included)
+                    if (url := unfollow_link(follow))
+                ],
             ).send([user.email], notification_type="ontology_github", reference=reference)
     if retry_needed:
         raise self.retry(

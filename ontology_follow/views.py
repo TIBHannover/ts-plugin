@@ -1,6 +1,9 @@
 import json
 
 from django.core.exceptions import BadRequest, PermissionDenied
+from django.core import signing
+from django.http import HttpResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from ontology_follow.models import OntologyFollowModel
@@ -8,6 +11,30 @@ from user.models import UserModel
 from user_service.libs.decorators import authentication_required, error_handler_decorator
 from user_service.libs.utils import create_json_response
 from user_service.middlewares.request import get_username_from_request
+
+
+@error_handler_decorator
+@never_cache
+@require_http_methods(["POST"])
+def unfollow_email(request):
+    try:
+        data = json.loads(request.body)
+    except ValueError:
+        raise BadRequest("An unfollow token is required")
+    token = data.get("token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token:
+        raise BadRequest("An unfollow token is required")
+    try:
+        payload = signing.loads(token, salt="ontology-unfollow")
+        follow_id, ontology_id = payload["follow_id"], payload["ontology_id"]
+    except (signing.BadSignature, KeyError, TypeError):
+        raise BadRequest("This unfollow link is invalid. Use the link in your ontology update email.")
+    deleted, _ = OntologyFollowModel.objects.filter(pk=follow_id, ontology_id=ontology_id).delete()
+    if not deleted:
+        return HttpResponse("This unfollow link is no longer valid. Use a recent email or manage your followed ontologies.", status=410)
+    return create_json_response({
+        "ontology_id": ontology_id, "following": False,
+    })
 
 
 @error_handler_decorator

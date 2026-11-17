@@ -13,12 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class Email:
-    def __init__(self, subject, body, client_ts="", html_body=None):
+    def __init__(self, subject, body, client_ts="", html_body=None, unfollow_links=()):
         self.subject = subject
         self.body = body
         self.html_body = html_body
         self.sender_email = settings.DEFAULT_FROM_EMAIL
         self.client_ts = client_ts
+        self.unfollow_links = unfollow_links
 
     def send(self, recipients, notification_type="general", reference="", is_admin=False):
         base = getattr(settings, f"{self.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
@@ -38,9 +39,11 @@ class Email:
             "subject": self.subject, "body": self.body, "html_body": self.html_body,
             "service_description": service_description, "footer_links": footer_links,
             "is_admin": is_admin,
+            "unfollow_links": self.unfollow_links,
         })
         body = (
             ("FOR SYSTEM ADMINS\n\n" if is_admin else "") + self.body
+            + "".join(f"\n\nUnfollow {ontology_id}: {url}" for ontology_id, url in self.unfollow_links)
             + f"\n\nAbout the Terminology Service\n{service_description}\n"
             + "".join(f"\n{label}: {url}" for label, url in footer_links)
         )

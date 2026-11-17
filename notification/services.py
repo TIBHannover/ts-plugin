@@ -4,6 +4,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 from ontology_follow.models import OntologyFollowModel
+from ontology_follow.links import unfollow_link
 from user_service.libs.email import Email
 
 
@@ -58,13 +59,16 @@ def notify_ontology_followers(instance, event, user):
     html_body = None
     if event == "note":
         body, html_body = note_email_content(instance, user, link)
-    Email(
-        f"Ontology update: {ontology_id}",
-        body,
-        client_ts=user.client_ts,
-        html_body=html_body,
-    ).send(
-        followers.values_list("user__email", flat=True),
-        notification_type=f"ontology_{event}",
-        reference=f"{event}:{instance.pk}",
-    )
+    for follow in followers.select_related("user"):
+        url = unfollow_link(follow)
+        Email(
+            f"Ontology update: {ontology_id}",
+            body,
+            client_ts=user.client_ts,
+            html_body=html_body,
+            unfollow_links=[(ontology_id, url)] if url else [],
+        ).send(
+            [follow.user.email],
+            notification_type=f"ontology_{event}",
+            reference=f"{event}:{instance.pk}",
+        )

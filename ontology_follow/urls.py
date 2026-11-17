@@ -5,5 +5,6 @@ from ontology_follow import views
 
 
 urlpatterns = [
+    path("unfollow/", csrf_exempt(views.unfollow_email), name="ontology_unfollow_email"),
     path("", csrf_exempt(views.follows), name="ontology_follows"),
 ]
