@@ -22,6 +22,8 @@ class EmailLog(models.Model):
     reference = models.CharField(max_length=255, blank=True)
     client_ts = models.CharField(max_length=100, blank=True)
     recipient = models.EmailField()
+    recipient_user = models.ForeignKey("UserModel", null=True, blank=True, on_delete=models.SET_NULL)
+    ontology_ids = models.JSONField(default=list, blank=True)
     sender = models.EmailField()
     subject = models.TextField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)

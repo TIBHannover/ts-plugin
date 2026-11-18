@@ -74,7 +74,10 @@ def send_github_digests(self, window_end=None):
                     for follow in user.ontology_follows.filter(ontology_id__in=included)
                     if (url := unfollow_link(follow))
                 ],
-            ).send([user.email], notification_type="ontology_github", reference=reference)
+            ).send(
+                [user.email], notification_type="ontology_github", reference=reference,
+                recipient_user=user, ontology_ids=included,
+            )
     if retry_needed:
         raise self.retry(
             kwargs={"window_end": end.isoformat()}, countdown=600,

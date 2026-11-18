@@ -1,13 +1,16 @@
+from concurrent.futures import ThreadPoolExecutor
 from smtplib import SMTPDataError, SMTPRecipientsRefused, SMTPServerDisconnected
+from threading import Event
 from unittest.mock import ANY, call, patch
 
 from celery.exceptions import Retry
 from django.core import mail
-from django.db import transaction
-from django.test import TestCase, override_settings
+from django.db import close_old_connections, transaction
+from django.test import TestCase, TransactionTestCase, override_settings, skipUnlessDBFeature
 from django.utils import timezone
 
 from notification.models import NotificationLog
+from ontology_follow.models import OntologyFollowModel
 from user.models import EmailLog, RoleModel, UserModel
 from user.tasks import send_notification_email
 from user_service.libs.email import Email
@@ -356,3 +359,119 @@ class EmailTests(TestCase):
         self.assertEqual(failed.status, EmailLog.Status.FAILED)
         self.assertEqual(successful.status, EmailLog.Status.CAPTURED)
         self.assertEqual(mail.outbox[0].to, ["good@example.org"])
+
+    @patch("user.tasks.send_mail")
+    def test_ontology_retry_rechecks_recipient_and_subscription(self, send_mail):
+        user = UserModel.objects.create(
+            username="follower", created_at=timezone.now(), client_ts="general",
+            email="recipient@example.org", email_verified=True,
+        )
+        for change in ("unfollow", "disable", "unverified", "email_changed", "blocked", "inactive"):
+            with self.subTest(change=change):
+                UserModel.objects.filter(pk=user.pk).update(
+                    email="recipient@example.org", email_verified=True, is_active=True, is_blocked=False,
+                )
+                follow, _ = OntologyFollowModel.objects.update_or_create(
+                    user=user, ontology_id="vibso", defaults={"notify_note": True},
+                )
+                log = self.make_log(notification_type="ontology_note", client_ts="general",
+                                    recipient_user=user, ontology_ids=["vibso"])
+                error = OSError("Temporary failure")
+                send_mail.side_effect = error
+                with patch.object(send_notification_email, "retry", side_effect=Retry), \
+                     self.assertLogs("user.tasks", level="ERROR"), self.assertRaises(Retry):
+                    send_notification_email.run(log.pk, self.email.body)
+                if change == "unfollow":
+                    follow.delete()
+                elif change == "disable":
+                    OntologyFollowModel.objects.filter(pk=follow.pk).update(notify_note=False)
+                else:
+                    fields = {"unverified": {"email_verified": False},
+                              "email_changed": {"email": "new@example.org"},
+                              "blocked": {"is_blocked": True}, "inactive": {"is_active": False}}
+                    UserModel.objects.filter(pk=user.pk).update(**fields[change])
+                send_mail.reset_mock()
+                send_mail.side_effect = None
+                send_notification_email.run(log.pk, self.email.body)
+                send_mail.assert_not_called()
+                log.refresh_from_db()
+                self.assertEqual(log.status, EmailLog.Status.FAILED)
+                self.assertEqual(log.attempts, 1)
+
+    @patch("user.tasks.send_mail")
+    def test_digest_with_partial_unfollow_is_suppressed(self, send_mail):
+        user = UserModel.objects.create(
+            username="digest", created_at=timezone.now(), client_ts="general",
+            email="recipient@example.org", email_verified=True,
+        )
+        OntologyFollowModel.objects.create(user=user, ontology_id="vibso")
+        log = self.make_log(notification_type="ontology_github", client_ts="general",
+                            recipient_user=user, ontology_ids=["vibso", "bfo"])
+        send_notification_email.run(log.pk, self.email.body)
+        send_mail.assert_not_called()
+        log.refresh_from_db()
+        self.assertEqual(log.status, EmailLog.Status.FAILED)
+
+    @patch("user.tasks.send_mail")
+    def test_another_users_verified_shared_email_does_not_authorize_send(self, send_mail):
+        user = UserModel.objects.create(
+            username="unverified", created_at=timezone.now(), client_ts="general",
+            email="recipient@example.org", email_verified=False,
+        )
+        other = UserModel.objects.create(
+            username="verified", created_at=timezone.now(), client_ts="general",
+            email=user.email, email_verified=True,
+        )
+        for follower in (user, other):
+            OntologyFollowModel.objects.create(user=follower, ontology_id="vibso")
+        for metadata in ({"recipient_user": user, "ontology_ids": ["vibso"]}, {}):
+            with self.subTest(metadata=metadata):
+                log = self.make_log(notification_type="ontology_note", client_ts="general", **metadata)
+                send_notification_email.run(log.pk, self.email.body)
+                log.refresh_from_db()
+                self.assertEqual(log.status, EmailLog.Status.FAILED)
+        send_mail.assert_not_called()
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class ConcurrentEmailTests(TransactionTestCase):
+    available_apps = ["user", "notification"]
+
+    @skipUnlessDBFeature("has_select_for_update")
+    def test_concurrent_tasks_submit_a_notification_only_once(self):
+        log = EmailLog.objects.create(subject="Concurrent", sender="sender@example.org",
+                                      recipient="recipient@example.org")
+        sending = Event()
+        release = Event()
+        second_started = Event()
+        duplicate_send = Event()
+
+        def send(*args, **kwargs):
+            if sending.is_set():
+                duplicate_send.set()
+            sending.set()
+            release.wait(5)
+            return 1
+
+        def run(second=False):
+            close_old_connections()
+            try:
+                if second:
+                    second_started.set()
+                send_notification_email.run(log.pk, "Body")
+            finally:
+                close_old_connections()
+
+        with patch("user.tasks.send_mail", side_effect=send) as submit, ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(run)
+            try:
+                self.assertTrue(sending.wait(5))
+                second = pool.submit(run, True)
+                self.assertTrue(second_started.wait(5))
+                self.assertFalse(duplicate_send.wait(0.2))
+            finally:
+                release.set()
+            first.result(timeout=5)
+            second.result(timeout=5)
+            submit.assert_called_once()
+        self.assertEqual(NotificationLog.objects.count(), 1)

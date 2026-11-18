@@ -22,7 +22,8 @@ class Email:
         self.client_ts = client_ts
         self.unfollow_links = unfollow_links
 
-    def send(self, recipients, notification_type="general", reference="", is_admin=False):
+    def send(self, recipients, notification_type="general", reference="", is_admin=False,
+             recipient_user=None, ontology_ids=()):
         base = getattr(settings, f"{self.client_ts.upper()}_FRONTEND_REDIRECT_URL", None)
         footer_links = [
             (label, urljoin(base.rstrip("/") + "/", path))
@@ -55,6 +56,8 @@ class Email:
                 reference=reference,
                 client_ts=self.client_ts,
                 recipient=recipient,
+                recipient_user=recipient_user,
+                ontology_ids=list(ontology_ids),
                 sender=self.sender_email,
                 subject=self.subject,
             )

@@ -71,4 +71,6 @@ def notify_ontology_followers(instance, event, user):
             [follow.user.email],
             notification_type=f"ontology_{event}",
             reference=f"{event}:{instance.pk}",
+            recipient_user=follow.user,
+            ontology_ids=[ontology_id],
         )
