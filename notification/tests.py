@@ -30,7 +30,7 @@ class OntologyNotificationTests(TestCase):
     def make_user(self, username, **kwargs):
         return UserModel.objects.create(
             username=username, created_at=timezone.now(), auth_provider="github",
-            **{"client_ts": "general", **kwargs},
+            **{"client_ts": "general", "email_verified": True, **kwargs},
         )
 
     def follow(self, user, ontology_id="vibso"):

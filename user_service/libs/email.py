@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import transaction
 from django.template.loader import render_to_string
 
+from notification.models import NotificationLog
 from user.models import EmailLog, RoleModel
 from user.tasks import send_notification_email
 
@@ -59,14 +60,15 @@ class Email:
             )
             logs.append(email_log)
 
-            def enqueue(email_log_id=email_log.pk):
+            def enqueue(email_log=email_log):
                 try:
-                    send_notification_email.delay(email_log_id, body, html_body)
+                    send_notification_email.delay(email_log.pk, body, html_body)
                 except Exception as exc:
-                    EmailLog.objects.filter(pk=email_log_id).update(
+                    EmailLog.objects.filter(pk=email_log.pk).update(
                         status=EmailLog.Status.FAILED, last_error=str(exc)
                     )
-                    logger.exception("Could not queue notification %s", email_log_id)
+                    NotificationLog.record(email_log, success=False)
+                    logger.exception("Could not queue notification %s", email_log.pk)
 
             transaction.on_commit(enqueue)
         return logs

@@ -7,6 +7,7 @@ from django.db import transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from notification.models import NotificationLog
 from user.models import EmailLog, RoleModel, UserModel
 from user.tasks import send_notification_email
 from user_service.libs.email import Email
@@ -69,6 +70,7 @@ class EmailTests(TestCase):
                 self.email.send(["recipient@example.org"])
                 raise ValueError("Rollback notification")
         self.assertFalse(EmailLog.objects.exists())
+        self.assertFalse(NotificationLog.objects.exists())
         delay.assert_not_called()
 
     @patch("user_service.libs.email.send_notification_email.delay")
@@ -88,6 +90,9 @@ class EmailTests(TestCase):
         self.assertEqual(log.attempts, 0)
         self.assertEqual(log.last_error, "Broker unavailable")
         self.assertIsNone(log.submitted_at)
+        audit = NotificationLog.objects.get()
+        self.assertEqual(audit.recipient, log.recipient)
+        self.assertFalse(audit.success)
 
     def test_report_only_notifies_admins_with_email_in_the_same_service(self):
         user = UserModel.objects.create(username="admin", client_ts="general", created_at=timezone.now())
@@ -176,18 +181,29 @@ class EmailTests(TestCase):
         self.assertEqual(mail.outbox[0].body, self.email.body)
         self.assertEqual(mail.outbox[0].from_email, log.sender)
         self.assertEqual(mail.outbox[0].subject, log.subject)
+        self.assertFalse(NotificationLog.objects.get().success)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend")
     @patch("django.core.mail.backends.smtp.smtplib.SMTP")
     def test_smtp_acceptance_records_submitted_not_delivered(self, smtp):
         smtp.return_value.sendmail.return_value = {}
-        log = self.make_log()
+        log = self.make_log(notification_type="reminder", reference="collection:42")
+        before = timezone.now()
         send_notification_email.run(log.pk, self.email.body)
         log.refresh_from_db()
         self.assertEqual(log.status, EmailLog.Status.SUBMITTED)
         self.assertEqual(log.attempts, 1)
         self.assertIsNotNone(log.submitted_at)
         self.assertEqual(smtp.return_value.sendmail.call_args.args[:2], (log.sender, [log.recipient]))
+        audit = NotificationLog.objects.get()
+        self.assertEqual(audit.trigger, "reminder: collection:42")
+        self.assertEqual(audit.recipient, log.recipient)
+        self.assertTrue(audit.success)
+        self.assertLessEqual(before, audit.created_at)
+        self.assertLessEqual(audit.created_at, timezone.now())
+        self.assertEqual(set(NotificationLog.objects.values().get()), {
+            "id", "trigger", "recipient", "success", "created_at",
+        })
 
     @patch("user.tasks.send_mail")
     def test_completed_notifications_are_not_submitted_again(self, send_mail):
@@ -198,6 +214,7 @@ class EmailTests(TestCase):
                 log.refresh_from_db()
                 self.assertEqual(log.attempts, 1)
         send_mail.assert_not_called()
+        self.assertFalse(NotificationLog.objects.exists())
 
     def test_temporary_failures_are_queued_for_retry(self):
         for error in (
@@ -218,6 +235,7 @@ class EmailTests(TestCase):
                 self.assertEqual(log.last_error, str(error))
                 self.assertIsNone(log.submitted_at)
                 retry.assert_called_once_with(exc=error, countdown=30)
+                self.assertFalse(NotificationLog.objects.latest("pk").success)
 
     def test_permanent_failures_are_not_retried(self):
         for error in (
@@ -237,6 +255,7 @@ class EmailTests(TestCase):
                 self.assertEqual(log.attempts, 1)
                 self.assertIsNone(log.submitted_at)
                 retry.assert_not_called()
+                self.assertFalse(NotificationLog.objects.latest("pk").success)
 
     def test_exhausted_retries_record_final_failure(self):
         send_notification_email.request.retries = send_notification_email.max_retries
@@ -265,6 +284,51 @@ class EmailTests(TestCase):
         self.assertEqual(log.last_error, "")
         self.assertIsNotNone(log.submitted_at)
         self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(NotificationLog.objects.count(), 2)
+
+    def test_audit_database_failure_does_not_affect_sending_or_retry(self):
+        create_audit = NotificationLog.objects.create
+
+        def invalid_audit(**kwargs):
+            return create_audit(**{**kwargs, "recipient": None})
+
+        with patch.object(NotificationLog.objects, "create", side_effect=invalid_audit), \
+             self.assertLogs("notification.models", level="ERROR"):
+            log = self.make_log()
+            send_notification_email.run(log.pk, self.email.body)
+            log.refresh_from_db()
+            self.assertEqual(log.status, EmailLog.Status.CAPTURED)
+            self.assertEqual(len(mail.outbox), 1)
+
+            log = self.make_log()
+            error = OSError("Temporary failure")
+            with patch("user.tasks.send_mail", side_effect=error), \
+                 patch.object(send_notification_email, "retry", side_effect=Retry) as retry, \
+                 self.assertLogs("user.tasks", level="ERROR"), self.assertRaises(Retry):
+                send_notification_email.run(log.pk, self.email.body)
+            retry.assert_called_once_with(exc=error, countdown=30)
+            log.refresh_from_db()
+            self.assertEqual(log.status, EmailLog.Status.QUEUED)
+            self.assertEqual(log.last_error, str(error))
+        self.assertFalse(NotificationLog.objects.exists())
+
+    def test_audit_database_failure_does_not_interrupt_broker_failure_handling(self):
+        create_audit = NotificationLog.objects.create
+
+        def invalid_audit(**kwargs):
+            return create_audit(**{**kwargs, "recipient": None})
+
+        with patch.object(NotificationLog.objects, "create", side_effect=invalid_audit), \
+             patch("user_service.libs.email.send_notification_email.delay", side_effect=OSError("Broker unavailable")), \
+             self.assertLogs("notification.models", level="ERROR"), \
+             self.assertLogs("user_service.libs.email", level="ERROR"):
+            with self.captureOnCommitCallbacks(execute=True):
+                logs = self.email.send(["first@example.org", "second@example.org"])
+        for log in logs:
+            log.refresh_from_db()
+            self.assertEqual(log.status, EmailLog.Status.FAILED)
+            self.assertEqual(log.last_error, "Broker unavailable")
+        self.assertFalse(NotificationLog.objects.exists())
 
     @patch("user.tasks.send_mail", return_value=0)
     def test_backend_not_accepting_message_is_retried_without_success_status(self, send_mail):

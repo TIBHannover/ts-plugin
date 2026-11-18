@@ -11,6 +11,7 @@ from smtplib import (
     SMTPServerDisconnected,
 )
 
+from notification.models import NotificationLog
 from user.models import EmailLog, OAuthLoginTransaction, UserModel
 
 
@@ -29,6 +30,7 @@ def send_notification_email(self, email_log_id, body, html_body=None):
         EmailLog.objects.filter(pk=email_log_id).update(
             status=EmailLog.Status.FAILED, last_error="Recipient email is no longer verified or active",
         )
+        NotificationLog.record(email_log, success=False)
         return
     EmailLog.objects.filter(pk=email_log_id).update(
         attempts=F("attempts") + 1, status=EmailLog.Status.QUEUED, last_error=""
@@ -54,6 +56,7 @@ def send_notification_email(self, email_log_id, body, html_body=None):
             status=EmailLog.Status.QUEUED if retry else EmailLog.Status.FAILED,
             last_error=str(exc),
         )
+        NotificationLog.record(email_log, success=False)
         if retry:
             raise self.retry(exc=exc, countdown=min(30 * 2 ** self.request.retries, 600))
         raise
@@ -64,6 +67,7 @@ def send_notification_email(self, email_log_id, body, html_body=None):
         ),
         submitted_at=timezone.now(), last_error="",
     )
+    NotificationLog.record(email_log, success=isinstance(connection, SMTPBackend))
 
 
 @shared_task
