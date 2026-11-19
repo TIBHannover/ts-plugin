@@ -63,12 +63,11 @@ def is_system_admin(request):
         user__username=get_username_from_request(),
         user__client_ts=client_ts,
         user__is_active=True,
-        user__is_blocked=False,
         client_ts=client_ts,
         target_object_id="system",
         target_object_type="system",
         role="admin",
-    ).exists()
+    ).exclude(user__is_blocked=True).exists()
     return create_json_response({"is_system_admin": is_admin})
 
 
@@ -81,12 +80,11 @@ def send_test_email(request):
         user__username=get_username_from_request(),
         user__client_ts=client_ts,
         user__is_active=True,
-        user__is_blocked=False,
         client_ts=client_ts,
         target_object_id="system",
         target_object_type="system",
         role="admin",
-    ).first()
+    ).exclude(user__is_blocked=True).first()
     if not role:
         return JsonResponse({"_result": "System admin access required"}, status=403)
     if not role.role_holder_email:
