@@ -46,7 +46,7 @@ services:
       dockerfile: docker/Dockerfile
     user: root
     entrypoint: ["python", "-I", "/usr/local/bin/app-entrypoint.py"]
-    command: ["sh", "-c", "python manage.py collectstatic --noinput && exec uvicorn user_service.asgi:application --host 0.0.0.0 --port 8000 --workers 3"]
+    command: ["sh", "-c", "python manage.py collectstatic --noinput && exec sh scripts/start-server.sh"]
     depends_on:
       deployment:
         condition: service_healthy
