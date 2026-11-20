@@ -256,7 +256,21 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-SWAGGER_SETTINGS = {"USE_SESSION_AUTH": False}
+SWAGGER_SETTINGS = {
+    "USE_SESSION_AUTH": False,
+    "SECURITY_DEFINITIONS": {
+        "ApiKey": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": (
+                "Create an API key in your profile in the web application under "
+                "`/myprofile/apikey`. Enter the API key directly in the Authorization "
+                "header, without a Bearer prefix (format: `apk_<client>_<token>`)."
+            ),
+        },
+    },
+}
 
 
 LANGUAGE_CODE = "en-us"

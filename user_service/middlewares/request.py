@@ -5,6 +5,7 @@ from django.conf import settings
 from user.models import UserModel
 from django.core.exceptions import PermissionDenied
 from user_service.libs.utils import make_hash
+from user_service.middlewares.client_id import get_client_id_from_request
 
 _current_context = threading.local()
 
@@ -19,19 +20,12 @@ class RequestMiddleware:
         return response
 
 
-def get_client_id_from_request():
-    request = getattr(_current_context, "request", None)
-    if request:
-        return request.headers.get("X-TS-Frontend-Id")
-    return ""
-
-
 def get_headers_dict():
     request = getattr(_current_context, "request", {"headers": {}})
     return {
         "auth_provider": request.headers.get("X-TS-Auth-Provider"),
         "orcid_id": get_orcid_id_jwt_payload(),
-        "client_ts_id": request.headers.get("X-TS-Frontend-Id"),
+        "client_ts_id": get_client_id_from_request(),
         "code": request.headers.get("X-TS-Auth-APP-Code"),
         "state": request.headers.get("X-TS-OAuth-State"),
     }
