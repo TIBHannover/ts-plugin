@@ -119,8 +119,8 @@ def activate_email(request):
     users = UserModel.objects.filter(
         pk=payload["user_id"], email=payload["email"], client_ts=payload["client_ts"],
         email_verification_token=hash_login_value(token), email_verified=False,
-        is_active=True, is_blocked=False,
-    )
+        is_active=True,
+    ).exclude(is_blocked=True)
     if not users.update(email_verified=True, email_verification_token="", updated_at=timezone.now()):
         raise BadRequest("This activation link is no longer valid. Save your email again to request a new link.")
     return create_json_response({"email_verified": True})
