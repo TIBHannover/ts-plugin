@@ -16,6 +16,7 @@ export DB_PASSWORD="${DB_PASSWORD:-1234}"
 export DB_HOST="${DB_HOST:-localhost}"
 export DB_PORT="${DB_PORT:-5432}"
 export DEBUG_MODE="${DEBUG_MODE:-True}"
+export SESSION_COOKIE_SECURE="${SESSION_COOKIE_SECURE:-False}"
 export CELERY_BROKER_URL="${CELERY_BROKER_URL:-redis://localhost:${REDIS_PORT}/0}"
 export CELERY_RESULT_BACKEND="${CELERY_RESULT_BACKEND:-redis://localhost:${REDIS_PORT}/0}"
 
@@ -87,9 +88,22 @@ wait_for_postgres
 start_redis
 
 "$PYTHON" manage.py migrate
+"$PYTHON" manage.py shell <<'PY'
+from django.conf import settings
+from django.contrib.auth import get_user_model
+
+if settings.DEBUG and settings.BASIC_AUTH_USERNAME and settings.BASIC_AUTH_PASSWORD:
+    user, _ = get_user_model().objects.get_or_create(username=settings.BASIC_AUTH_USERNAME)
+    user.is_staff = True
+    user.is_superuser = True
+    user.is_active = True
+    user.set_password(settings.BASIC_AUTH_PASSWORD)
+    user.save()
+PY
 "$PYTHON" manage.py collectstatic --noinput
 
-"$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" &
+"$PYTHON" -m uvicorn user_service.asgi:application --host 0.0.0.0 --port "$PORT" \
+    --root-path "$("$PYTHON" -c 'from user_service.settings import FORCE_SCRIPT_NAME; print(FORCE_SCRIPT_NAME or "")')" &
 pids+=("$!")
 
 # "$PYTHON" -m celery -A user_service worker --loglevel=error --concurrency="${CELERY_CONCURRENCY:-20}" &
